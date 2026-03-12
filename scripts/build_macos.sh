@@ -13,6 +13,9 @@ if [[ ! -x "$python_bin" ]]; then
   exit 1
 fi
 
+"$python_bin" -m pip install -r requirements-build.txt
+"$python_bin" -c "import tkinter; import numpy; import imageio; import imageio_ffmpeg; from PIL import Image, ImageTk"
+
 if [[ ! -f "$icon_png" ]]; then
   echo "Missing icon source: $icon_png" >&2
   exit 1

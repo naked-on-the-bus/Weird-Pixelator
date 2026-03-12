@@ -10,6 +10,9 @@ if [[ ! -x "$python_bin" ]]; then
   exit 1
 fi
 
+"$python_bin" -m pip install -r requirements-build.txt
+"$python_bin" -c "import tkinter; import numpy; import imageio; import imageio_ffmpeg; from PIL import Image, ImageTk"
+
 "$python_bin" -m PyInstaller \
   --noconfirm \
   --windowed \

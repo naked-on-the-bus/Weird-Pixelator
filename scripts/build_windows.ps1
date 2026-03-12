@@ -15,6 +15,15 @@ if (-not (Test-Path $pythonBin)) {
     exit 1
 }
 
+& $pythonBin -m pip install -r requirements-build.txt
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+& $pythonBin -c "import tkinter; import numpy; import imageio; import imageio_ffmpeg; from PIL import Image, ImageTk"
+if ($LASTEXITCODE -ne 0) {
+    Write-Error 'Missing required Python modules in the selected environment.'
+    exit $LASTEXITCODE
+}
+
 if (-not (Test-Path $iconPng)) {
     Write-Error "Missing icon source: $iconPng"
     exit 1

@@ -1,234 +1,129 @@
-# Weird Pixelator – Build and itch.io Release Guide
+# Weird Pixelator Build and Release Guide
 
-It is a small desktop Python app with only a few dependencies:
+This document reflects the current repository setup for local builds and GitHub releases.
 
-- `tkinter`
-- `Pillow`
-- `numpy`
-
-That makes native packaging realistic with `PyInstaller`.
-
----
-
-## Current state of the app
-
-### What is already good
-
-- The app starts successfully.
-- The codebase is small and easy to package.
-- There are no current Python analysis errors.
-- A `PyInstaller` spec file already exists.
-
-### What needed attention
-
-- Windows path handling used `/` splitting instead of `os.path.basename()`.
-- There was no dependency manifest for reproducible builds.
-- There was no release guide for platform builds and itch.io upload.
-
-These have now been addressed.
-
----
-
-## Important packaging rule
+## Build Rule
 
 Build each platform on that platform.
 
-In practice:
+- Windows build on Windows
+- macOS build on macOS
+- Linux build on Linux
 
-- build Windows on Windows
-- build macOS on macOS
-- build Linux on Linux
+## Dependencies
 
-Do not rely on cross-compiling desktop Python apps from one OS to another.
+Runtime dependencies are pinned in `requirements.txt`:
 
----
+- `numpy`
+- `Pillow`
+- `imageio`
+- `imageio-ffmpeg`
 
-## Recommended distribution format for itch.io
+Build dependencies are in `requirements-build.txt` (includes runtime + `pyinstaller`).
 
-### Windows
+On Linux CI, `python3-tk` is installed at OS level for Tkinter.
 
-Recommended:
+## Build Scripts
 
-- zipped folder containing `Weird Pixelator.exe`
+All scripts:
 
-Optional later:
-
-- installer made with Inno Setup or NSIS
-
-### macOS
-
-Recommended:
-
-- zipped `Weird Pixelator.app`
-
-Best user experience:
-
-- sign and notarize the app before release
-
-### Linux
-
-Recommended:
-
-- tar.gz containing the packaged app folder
-
-Nice upgrade later:
-
-- AppImage
-
----
-
-## Build setup
-
-Create a clean virtual environment on each target OS, then install build dependencies:
-
-```bash
-pip install -r requirements-build.txt
-```
-
-For local app runtime (not packaging), install runtime dependencies with:
-
-```bash
-pip install -r requirements.txt
-```
-
----
-
-## GitHub release pipeline (all platforms)
-
-The repository includes a GitHub Actions workflow at `.github/workflows/build-release.yml`.
-
-It supports:
-
-- tag-triggered releases on push of tags matching `v*` (for example `v1.2`)
-- manual releases via `workflow_dispatch` with `version` input (default `1.2`)
-
-### CI artifact layout
-
-Each platform job normalizes outputs into platform folders and versioned filenames:
-
-- `dist/Windows/Weird Pixelator Windows v1.2.zip`
-- `dist/Mac/Weird Pixelator Mac v1.2.zip`
-- `dist/Linux/Weird Pixelator Linux v1.2.tar.gz`
-
-The `release` job publishes those files as GitHub Release assets.
-
----
-
-## Example PyInstaller commands
-
-Use these from the project root. Prefer the build scripts below — these are shown for reference only.
+- install from `requirements-build.txt`
+- run a Python import smoke check before packaging
 
 ### Windows
 
-```powershell
-pyinstaller --noconfirm --windowed --icon icon.ico --name "Weird Pixelator" main.py
-```
-
-Use the build script instead:
+Command:
 
 ```powershell
 .\scripts\build_windows.ps1
 ```
 
-Output to upload:
+Uses spec:
 
-- local script output: `dist\Weird Pixelator Windows.zip`
-- CI/release output: `dist/Windows/Weird Pixelator Windows v<version>.zip`
+- `Weird Pixelator Windows.spec`
+
+Output:
+
+- `dist\Weird Pixelator Windows.zip`
 
 ### macOS
 
-Use the build script:
+Command:
 
 ```bash
 ./scripts/build_macos.sh
 ```
 
-Output to upload:
+Uses spec:
 
-- local script output: `dist/Weird Pixelator.app` (zip manually if needed)
-- CI/release output: `dist/Mac/Weird Pixelator Mac v<version>.zip`
+- `Weird Pixellator.spec`
 
-If you want lower Gatekeeper friction, sign and notarize it.
+Output:
+
+- `dist/Weird Pixelator.app`
 
 ### Linux
 
-```bash
-pyinstaller --noconfirm --windowed --name "Weird Pixelator" --copy-metadata imageio --copy-metadata imageio-ffmpeg main.py
-```
-
-Output to upload:
-
-- local script output: `dist/Weird Pixelator Linux.tar.gz`
-- CI/release output: `dist/Linux/Weird Pixelator Linux v<version>.tar.gz`
-
----
-
-## itch.io upload workflow
-
-For the best install experience, use the itch.io app with platform-specific uploads.
-
-### Option A: manual upload in browser
-
-Upload separate files for:
-
-- Windows
-- macOS
-- Linux
-
-Mark each upload for its platform.
-
-### Option B: Butler CLI
-
-Recommended for updates.
-
-Typical channels:
-
-- `yourname/weird-pixelator:windows`
-- `yourname/weird-pixelator:mac`
-- `yourname/weird-pixelator:linux`
-
-Example:
+Command:
 
 ```bash
-butler push "dist/Weird Pixelator" yourname/weird-pixelator:windows
+./scripts/build_linux.sh
 ```
 
-On macOS, push the zipped `.app` or a prepared release artifact.
+Uses spec:
 
----
+- `Weird Pixelator Linux.spec`
 
-## Release checklist
+Output:
 
-Before publishing:
+- `dist/Weird Pixelator Linux.tar.gz`
 
-- verify image upload works
-- verify save works
-- verify randomize works
-- verify blend image works
-- verify one export on each OS
-- include a small README for players
-- include an icon for the executable/app
-- keep the checked-in source icon as icon.png
-- keep the visible app name consistent: `Weird Pixelator`
+## Why Spec Files Exist
 
-Recommended next improvements:
+PyInstaller spec files are explicit build recipes used to make packaging deterministic.
 
-- add an application icon
-- standardize the spelling of `Pixelator` vs `Pixellator`
-- add version metadata
-- sign/notarize the macOS app
-- optionally create a real Windows installer
-- optionally build an AppImage for Linux
+They define:
 
----
+- entry script
+- app name/icon
+- metadata copied into the bundle
+- hidden imports that auto-discovery may miss
 
-## Practical recommendation
+This project uses them to ensure `imageio` metadata and Pillow/Tk modules are bundled correctly.
 
-For the first public itch.io release, use this approach:
+## GitHub Actions Release Flow
 
-1. Package with `PyInstaller`.
-2. Build separately on Windows, macOS, and Linux.
-3. Upload one artifact per platform to itch.io.
-4. Use Butler for future updates.
+Workflow file:
 
-That is the fastest reliable path.
+- `.github/workflows/build-release.yml`
+
+Trigger:
+
+- manual `workflow_dispatch` with required `version` input (for example `v1.2`)
+
+Jobs:
+
+- build-windows
+- build-macos
+- build-linux
+- release
+
+Published release assets:
+
+- `Weird Pixelator Windows.zip`
+- `Weird Pixelator macOS.zip`
+- `Weird Pixelator Linux.tar.gz`
+
+Assets are gathered from downloaded workflow artifacts under:
+
+- `artifacts/weird-pixelator-windows/`
+- `artifacts/weird-pixelator-macos/`
+- `artifacts/weird-pixelator-linux/`
+
+## Suggested Release Checklist
+
+- Build all three platforms from clean environments.
+- Smoke-test upload/open/save on each artifact.
+- Verify animation export on each artifact.
+- Run the Actions release workflow with the target version.
+- Validate the three release assets before publishing externally.

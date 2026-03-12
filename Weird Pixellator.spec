@@ -1,6 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 from pathlib import Path
+from PyInstaller.utils.hooks import copy_metadata
 
 
 APP_NAME = 'Weird Pixelator'
@@ -17,12 +18,19 @@ INFO_PLIST = {
     'LSApplicationCategoryType': 'public.app-category.graphics-design',
 }
 
+DIST_METADATA = []
+for dist_name in ('imageio', 'imageio-ffmpeg'):
+    try:
+        DIST_METADATA += copy_metadata(dist_name)
+    except Exception:
+        pass
+
 
 a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=DIST_METADATA,
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

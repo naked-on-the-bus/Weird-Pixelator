@@ -1,0 +1,123 @@
+name: Build and Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version tag (e.g. v1.0.0)'
+        required: true
+        type: string
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Create virtual environment and install build dependencies
+        run: |
+          python -m venv .venv
+          .\.venv\Scripts\pip install -r requirements-build.txt
+
+      - name: Build Windows executable
+        run: .\scripts\build_windows.ps1
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: weird-pixelator-windows
+          path: "dist/Weird Pixelator Windows.zip"
+
+  build-macos:
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Create virtual environment and install build dependencies
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install -r requirements-build.txt
+
+      - name: Build macOS app
+        run: ./scripts/build_macos.sh
+
+      - name: Zip macOS app
+        run: cd dist && zip -r "Weird Pixelator macOS.zip" "Weird Pixelator.app"
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: weird-pixelator-macos
+          path: "dist/Weird Pixelator macOS.zip"
+
+  build-linux:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y python3-tk
+
+      - name: Create virtual environment and install build dependencies
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install -r requirements-build.txt
+
+      - name: Build Linux executable
+        run: ./scripts/build_linux.sh
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: weird-pixelator-linux
+          path: "dist/Weird Pixelator Linux.tar.gz"
+
+  release:
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create and push version tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "${{ github.event.inputs.version }}"
+          git push origin "${{ github.event.inputs.version }}"
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.version }}
+          name: "Weird Pixelator ${{ github.event.inputs.version }}"
+          draft: false
+          prerelease: false
+          files: |
+            artifacts/weird-pixelator-windows/Weird Pixelator Windows.zip
+            artifacts/weird-pixelator-macos/Weird Pixelator macOS.zip
+            artifacts/weird-pixelator-linux/Weird Pixelator Linux.tar.gz

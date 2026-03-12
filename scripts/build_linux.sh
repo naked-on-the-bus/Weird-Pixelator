@@ -16,6 +16,9 @@ fi
   --name "Weird Pixelator" \
   --copy-metadata imageio \
   --copy-metadata imageio-ffmpeg \
+  --copy-metadata Pillow \
+  --hidden-import PIL._tkinter_finder \
+  --hidden-import PIL.ImageTk \
   main.py
 
 cd dist

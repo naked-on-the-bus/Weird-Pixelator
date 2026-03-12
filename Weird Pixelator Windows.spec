@@ -7,7 +7,7 @@ from PyInstaller.utils.hooks import copy_metadata
 APP_NAME = 'Weird Pixelator'
 APP_VERSION = '1.0.0'
 ICON_PATH = str(Path(SPECPATH) / 'assets' / 'icon.ico')
-METADATA_DATAS = copy_metadata('imageio') + copy_metadata('imageio-ffmpeg')
+METADATA_DATAS = copy_metadata('imageio') + copy_metadata('imageio-ffmpeg') + copy_metadata('Pillow')
 
 
 a = Analysis(
@@ -15,7 +15,7 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=METADATA_DATAS,
-    hiddenimports=[],
+    hiddenimports=['PIL._tkinter_finder', 'PIL.ImageTk'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

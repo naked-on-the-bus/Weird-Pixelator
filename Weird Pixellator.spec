@@ -19,7 +19,7 @@ INFO_PLIST = {
 }
 
 DIST_METADATA = []
-for dist_name in ('imageio', 'imageio-ffmpeg'):
+for dist_name in ('imageio', 'imageio-ffmpeg', 'Pillow'):
     try:
         DIST_METADATA += copy_metadata(dist_name)
     except Exception:
@@ -31,7 +31,7 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=DIST_METADATA,
-    hiddenimports=[],
+    hiddenimports=['PIL._tkinter_finder', 'PIL.ImageTk'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

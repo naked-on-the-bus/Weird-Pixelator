@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 APP_NAME = 'Weird Pixelator'
-APP_VERSION = '1.0.0'
+APP_VERSION = '1.1'
 BUNDLE_IDENTIFIER = 'io.itch.weirdpixelator'
 ICON_PATH = str(Path(SPECPATH) / 'assets' / 'icon.icns')
 INFO_PLIST = {

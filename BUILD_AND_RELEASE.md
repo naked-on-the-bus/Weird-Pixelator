@@ -85,6 +85,33 @@ Create a clean virtual environment on each target OS, then install build depende
 pip install -r requirements-build.txt
 ```
 
+For local app runtime (not packaging), install runtime dependencies with:
+
+```bash
+pip install -r requirements.txt
+```
+
+---
+
+## GitHub release pipeline (all platforms)
+
+The repository includes a GitHub Actions workflow at `.github/workflows/build-release.yml`.
+
+It supports:
+
+- tag-triggered releases on push of tags matching `v*` (for example `v1.2`)
+- manual releases via `workflow_dispatch` with `version` input (default `1.2`)
+
+### CI artifact layout
+
+Each platform job normalizes outputs into platform folders and versioned filenames:
+
+- `dist/Windows/Weird Pixelator Windows v1.2.zip`
+- `dist/Mac/Weird Pixelator Mac v1.2.zip`
+- `dist/Linux/Weird Pixelator Linux v1.2.tar.gz`
+
+The `release` job publishes those files as GitHub Release assets.
+
 ---
 
 ## Example PyInstaller commands
@@ -105,7 +132,8 @@ Use the build script instead:
 
 Output to upload:
 
-- `dist\Weird Pixelator Windows.zip` (contains the `Weird Pixelator\` folder)
+- local script output: `dist\Weird Pixelator Windows.zip`
+- CI/release output: `dist/Windows/Weird Pixelator Windows v<version>.zip`
 
 ### macOS
 
@@ -117,7 +145,8 @@ Use the build script:
 
 Output to upload:
 
-- `dist/Weird Pixelator.app`, zipped
+- local script output: `dist/Weird Pixelator.app` (zip manually if needed)
+- CI/release output: `dist/Mac/Weird Pixelator Mac v<version>.zip`
 
 If you want lower Gatekeeper friction, sign and notarize it.
 
@@ -129,7 +158,8 @@ pyinstaller --noconfirm --windowed --name "Weird Pixelator" main.py
 
 Output to upload:
 
-- the generated `dist/Weird Pixelator/` folder as `.tar.gz`
+- local script output: `dist/Weird Pixelator Linux.tar.gz`
+- CI/release output: `dist/Linux/Weird Pixelator Linux v<version>.tar.gz`
 
 ---
 

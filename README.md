@@ -45,6 +45,26 @@ The script uses the checked-in source icon:
 
 The packaged app is created in `dist/`.
 
+## Cut release v1.2 (GitHub Actions)
+
+Use `.github/workflows/build-release.yml` to build and publish all platforms.
+
+1. Commit and push your changes to `main`.
+2. Trigger one of these:
+   - push tag `v1.2` (example: `git tag v1.2 && git push origin v1.2`), or
+   - run **Build and Release** manually in Actions with `version = 1.2`.
+3. Wait for all jobs to finish (`build-windows`, `build-macos`, `build-linux`, `release`).
+4. Verify GitHub Release assets include:
+   - `Weird Pixelator Windows v1.2.zip`
+   - `Weird Pixelator Mac v1.2.zip`
+   - `Weird Pixelator Linux v1.2.tar.gz`
+
+In CI, artifacts are normalized under platform folders before release upload:
+
+- `dist/Windows/`
+- `dist/Mac/`
+- `dist/Linux/`
+
 ## Repository hygiene
 
 The project ignores local and generated files such as:

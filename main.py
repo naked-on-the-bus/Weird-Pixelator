@@ -4,11 +4,18 @@ import colorsys
 import os
 import struct
 from io import BytesIO
-from PIL import Image, ImageTk, ImageFilter, ImageOps
+from PIL import Image, ImageTk, ImageOps
 import numpy as np
 import imageio.v2 as imageio
 from image_object import ImageObject
 import image_effects
+import media_io_helpers
+import export_helpers
+import render_pipeline_helpers
+import ui_builders
+import palette_helpers
+import animation_helpers
+import crop_helpers
 
 class App:
     def __init__(self, root):
@@ -203,21 +210,7 @@ class App:
         """
         Build or rebuild the main app shell for the current theme.
         """
-        self.root.configure(bg=self.theme["bg"])
-        self._configure_notebook_style()
-
-        if hasattr(self, 'app_shell') and self.app_shell is not None:
-            self.app_shell.destroy()
-
-        self.app_shell = tk.Frame(self.root, bg=self.theme["bg"])
-        self.app_shell.pack(fill=tk.BOTH, expand=True, padx=12, pady=12)
-        self.app_shell.grid_columnconfigure(0, weight=3)
-        self.app_shell.grid_columnconfigure(1, weight=2, minsize=360)
-        self.app_shell.grid_rowconfigure(1, weight=1)
-
-        self._build_header()
-        self._build_preview_panel()
-        self._build_control_sidebar()
+        ui_builders.build_ui_shell(self)
 
     def _capture_ui_state(self):
         """
@@ -396,182 +389,25 @@ class App:
         """
         Configure a compact classic notebook style for the right sidebar tabs.
         """
-        style = ttk.Style(self.root)
-        try:
-            style.theme_use("classic")
-        except tk.TclError:
-            pass
-
-        style.configure(
-            "Weird.TNotebook",
-            background=self.theme["bg"],
-            borderwidth=1,
-            tabmargins=(2, 2, 2, 0)
-        )
-        style.configure(
-            "Weird.TNotebook.Tab",
-            background=self.theme["panel"],
-            foreground=self.theme["text"],
-            padding=(12, 6),
-            borderwidth=1,
-            relief="raised",
-            focuscolor=self.theme["panel"],
-        )
-        style.map(
-            "Weird.TNotebook.Tab",
-            background=[("selected", self.theme["panel_alt"]), ("active", self.theme["panel_soft"])],
-            foreground=[("selected", self.theme["text"]), ("active", self.theme["text"])],
-        )
+        ui_builders.configure_notebook_style(self)
 
     def _build_header(self):
         """
         Build the compact top bar.
         """
-        self.header_frame = tk.Frame(self.app_shell, bg=self.theme["bg"])
-        self.header_frame.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 12))
-        self.header_frame.grid_columnconfigure(0, weight=1)
-
-        title_block = tk.Frame(self.header_frame, bg=self.theme["bg"])
-        title_block.grid(row=0, column=0, sticky="w")
-
-        tk.Label(
-            title_block,
-            text="Weird Pixelator",
-            fg=self.theme["text"],
-            bg=self.theme["bg"],
-            font=("Helvetica", 20, "bold")
-        ).pack(anchor="w")
-        tk.Label(
-            title_block,
-            text="Compact glitch controls with a cleaner preview workflow.",
-            fg=self.theme["muted"],
-            bg=self.theme["bg"],
-            font=("Helvetica", 10)
-        ).pack(anchor="w", pady=(2, 0))
-
-        actions = tk.Frame(self.header_frame, bg=self.theme["bg"])
-        actions.grid(row=0, column=1, sticky="e")
-
-        self.upload_button = tk.Button(
-            actions,
-            text="Upload",
-            command=self.upload_image,
-            **self._button_style(self.theme["button"])
-        )
-        self.upload_button.pack(side=tk.LEFT, padx=(0, 8))
-
-        self.save_button = tk.Button(
-            actions,
-            text="Save As",
-            command=self.save_as,
-            **self._button_style(self.theme["accent_soft"])
-        )
-        self.save_button.pack(side=tk.LEFT, padx=(0, 8))
-
-        self.randomize_settings_button = tk.Button(
-            actions,
-            text="Randomize Settings",
-            command=self.open_randomize_settings,
-            **self._button_style(self.theme["button_alt"])
-        )
-        self.randomize_settings_button.pack(side=tk.LEFT, padx=(0, 8))
-
-        self.settings_button = tk.Button(
-            actions,
-            text="Settings",
-            command=self.open_app_settings,
-            **self._button_style(self.theme["button"])
-        )
-        self.settings_button.pack(side=tk.LEFT)
+        ui_builders.build_header(self)
 
     def _build_preview_panel(self):
         """
         Build the left preview area.
         """
-        self.preview_frame, preview_body = self._create_card(
-            self.app_shell,
-            "Preview",
-            self.preview_hint_var,
-            stretch=True
-        )
-        self.preview_frame.grid(row=1, column=0, sticky="nsew", padx=(0, 12))
-        self.preview_frame.grid_rowconfigure(1, weight=1)
-        self.preview_frame.grid_columnconfigure(0, weight=1)
-
-        tk.Label(
-            preview_body,
-            textvariable=self.preview_title_var,
-            fg=self.theme["text"],
-            bg=self.theme["panel"],
-            font=("Helvetica", 13, "bold"),
-            anchor="w"
-        ).pack(anchor="w")
-
-        self.canvas_wrap = tk.Frame(
-            preview_body,
-            bg=self.theme["canvas"],
-            relief=tk.SUNKEN,
-            bd=2,
-            highlightthickness=0,
-        )
-        self.canvas_wrap.configure(width=430, height=430)
-        self.canvas_wrap.pack_propagate(False)
-        self.canvas_wrap.pack(pady=(10, 0), anchor="center")
-
-        self.canvas = tk.Canvas(
-            self.canvas_wrap,
-            width=400,
-            height=400,
-            bg="#000000",
-            bd=0,
-            highlightthickness=0
-        )
-        self.canvas.pack(fill=tk.BOTH, expand=True, padx=12, pady=12)
-
-        tk.Label(
-            preview_body,
-            text="Live preview updates automatically while you tweak controls.",
-            fg=self.theme["muted"],
-            bg=self.theme["panel"],
-            font=("Helvetica", 10)
-        ).pack(anchor="w", pady=(10, 0))
+        ui_builders.build_preview_panel(self)
 
     def _build_control_sidebar(self):
         """
         Build the compact tabbed control sidebar.
         """
-        self.sidebar_frame = tk.Frame(self.app_shell, bg=self.theme["bg"])
-        self.sidebar_frame.grid(row=1, column=1, sticky="nsew")
-        self.sidebar_frame.grid_rowconfigure(0, weight=1)
-        self.sidebar_frame.grid_columnconfigure(0, weight=1)
-
-        self.controls_notebook = ttk.Notebook(self.sidebar_frame, style="Weird.TNotebook")
-        self.controls_notebook.grid(row=0, column=0, sticky="nsew")
-
-        self.edit_tab = tk.Frame(self.controls_notebook, bg=self.theme["bg"])
-        self.glitch_tab = tk.Frame(self.controls_notebook, bg=self.theme["bg"])
-        self.finish_tab = tk.Frame(self.controls_notebook, bg=self.theme["bg"])
-        self.crop_tab = tk.Frame(self.controls_notebook, bg=self.theme["bg"])
-        self.animate_tab = tk.Frame(self.controls_notebook, bg=self.theme["bg"])
-        self.intensity_tab = tk.Frame(self.controls_notebook, bg=self.theme["bg"])
-        self.palette_tab = tk.Frame(self.controls_notebook, bg=self.theme["bg"])
-
-        self.controls_notebook.add(self.edit_tab, text="Adjust")
-        self.controls_notebook.add(self.glitch_tab, text="Glitch")
-        self.controls_notebook.add(self.finish_tab, text="Finish")
-        self.controls_notebook.add(self.crop_tab, text="Crop")
-        self.controls_notebook.add(self.animate_tab, text="Animate")
-        self.controls_notebook.add(self.intensity_tab, text="Intensity")
-        self.controls_notebook.add(self.palette_tab, text="Palette")
-
-        self._build_adjust_tab()
-        self._build_glitch_tab()
-        self._build_finish_tab()
-        self._build_crop_tab()
-        self._build_animation_tab()
-        self._build_intensity_tab()
-        self._build_palette_tab()
-        self._sync_media_tabs()
+        ui_builders.build_control_sidebar(self)
 
     def _build_adjust_tab(self):
         """
@@ -1185,424 +1021,151 @@ class App:
         """
         Update the palette text output.
         """
-        if not hasattr(self, 'palette_values_text'):
-            return
-
-        self.palette_values_text.configure(state=tk.NORMAL)
-        self.palette_values_text.delete("1.0", tk.END)
-        self.palette_values_text.insert("1.0", text)
-        self.palette_values_text.configure(state=tk.DISABLED)
+        palette_helpers.set_palette_text(self, text)
 
     def _reset_palette_output(self, message=None):
         """
         Clear palette output widgets and status.
         """
-        self.palette_entries = []
-        if message is None:
-            message = "Load an image and extract a palette from the preview."
-
-        self.palette_status_var.set(message)
-        if hasattr(self, 'palette_preview_inner'):
-            for child in self.palette_preview_inner.winfo_children():
-                child.destroy()
-            tk.Label(
-                self.palette_preview_inner,
-                text="Extract a palette to see color swatches here.",
-                fg=self.theme["muted"],
-                bg=self.theme["panel_soft"],
-                justify=tk.LEFT,
-                wraplength=300,
-            ).pack(anchor="w", padx=0, pady=8)
-
-        self._set_palette_text("No palette extracted yet.")
+        palette_helpers.reset_palette_output(self, message)
 
     def _get_color_luminance(self, rgb):
         """
         Return perceived luminance for an RGB tuple.
         """
-        red, green, blue = rgb
-        return (0.2126 * red) + (0.7152 * green) + (0.0722 * blue)
+        return palette_helpers.get_color_luminance(self, rgb)
 
     def _palette_text_color(self, rgb):
         """
         Choose dark or light text for a swatch.
         """
-        return "#11131a" if self._get_color_luminance(rgb) >= 150 else self.theme["text"]
+        return palette_helpers.palette_text_color(self, rgb)
 
     def _rgb_to_hex(self, rgb):
         """
         Convert RGB to hex.
         """
-        return f"#{rgb[0]:02X}{rgb[1]:02X}{rgb[2]:02X}"
+        return palette_helpers.rgb_to_hex(self, rgb)
 
     def _rgb_to_hsl(self, rgb):
         """
         Convert RGB to HSL components.
         """
-        red, green, blue = [channel / 255.0 for channel in rgb]
-        hue, lightness, saturation = colorsys.rgb_to_hls(red, green, blue)
-        return (
-            int(round(hue * 360.0)) % 360,
-            int(round(saturation * 100.0)),
-            int(round(lightness * 100.0)),
-        )
+        return palette_helpers.rgb_to_hsl(self, rgb)
 
     def _rgb_to_hsv(self, rgb):
         """
         Convert RGB to HSV components.
         """
-        red, green, blue = [channel / 255.0 for channel in rgb]
-        hue, saturation, value = colorsys.rgb_to_hsv(red, green, blue)
-        return (
-            int(round(hue * 360.0)) % 360,
-            int(round(saturation * 100.0)),
-            int(round(value * 100.0)),
-        )
+        return palette_helpers.rgb_to_hsv(self, rgb)
 
     def _rgb_to_cmyk(self, rgb):
         """
         Convert RGB to CMYK components.
         """
-        red, green, blue = [channel / 255.0 for channel in rgb]
-        key = 1.0 - max(red, green, blue)
-        if key >= 1.0:
-            return (0, 0, 0, 100)
-
-        cyan = (1.0 - red - key) / max(0.0001, 1.0 - key)
-        magenta = (1.0 - green - key) / max(0.0001, 1.0 - key)
-        yellow = (1.0 - blue - key) / max(0.0001, 1.0 - key)
-        return (
-            int(round(cyan * 100.0)),
-            int(round(magenta * 100.0)),
-            int(round(yellow * 100.0)),
-            int(round(key * 100.0)),
-        )
+        return palette_helpers.rgb_to_cmyk(self, rgb)
 
     def _get_palette_export_formats(self):
         """
         Return supported palette export formats.
         """
-        return {
-            "PNG Image (1x)": {
-                "extension": ".png",
-                "filetypes": [("PNG Image", "*.png")],
-            },
-            "PNG Image (8x)": {
-                "extension": ".png",
-                "filetypes": [("PNG Image", "*.png")],
-            },
-            "PNG Image (32x)": {
-                "extension": ".png",
-                "filetypes": [("PNG Image", "*.png")],
-            },
-            "PAL File (JASC)": {
-                "extension": ".pal",
-                "filetypes": [("JASC Palette", "*.pal")],
-            },
-            "Photoshop ASE": {
-                "extension": ".ase",
-                "filetypes": [("Adobe Swatch Exchange", "*.ase")],
-            },
-            "Paint.net TXT": {
-                "extension": ".txt",
-                "filetypes": [("Paint.net Palette", "*.txt")],
-            },
-            "GIMP GPL": {
-                "extension": ".gpl",
-                "filetypes": [("GIMP Palette", "*.gpl")],
-            },
-            "HEX File": {
-                "extension": ".txt",
-                "filetypes": [("HEX Palette", "*.txt")],
-            },
-        }
+        return palette_helpers.get_palette_export_formats(self)
 
     def _format_palette_color(self, rgb):
         """
         Format a palette color for the on-screen value list.
         """
-        hex_value = self._rgb_to_hex(rgb)
-        rgb_value = f"rgb({rgb[0]}, {rgb[1]}, {rgb[2]})"
-        hsl = self._rgb_to_hsl(rgb)
-        hsv = self._rgb_to_hsv(rgb)
-        cmyk = self._rgb_to_cmyk(rgb)
-
-        hsl_value = f"hsl({hsl[0]}°, {hsl[1]}%, {hsl[2]}%)"
-        hsv_value = f"hsv({hsv[0]}°, {hsv[1]}%, {hsv[2]}%)"
-        cmyk_value = f"cmyk({cmyk[0]}%, {cmyk[1]}%, {cmyk[2]}%, {cmyk[3]}%)"
-        return f"{hex_value} | {rgb_value} | {hsl_value} | {hsv_value} | {cmyk_value}"
+        return palette_helpers.format_palette_color(self, rgb)
 
     def _copy_palette_hex(self, rgb):
         """
         Copy a swatch HEX value to the clipboard.
         """
-        hex_value = self._rgb_to_hex(rgb)
-        self.root.clipboard_clear()
-        self.root.clipboard_append(hex_value)
-        self.root.update_idletasks()
-        self.palette_status_var.set(f"Copied {hex_value} to the clipboard.")
+        palette_helpers.copy_palette_hex(self, rgb)
 
     def _palette_file_stem(self):
         """
         Return a base filename for palette exports.
         """
-        if self.image_object is None or not getattr(self.image_object, 'name', None):
-            return "Weird_Pixelator_Palette"
-
-        name_root, _ext = os.path.splitext(self.image_object.name)
-        cleaned = name_root.strip() or "Weird_Pixelator_Palette"
-        return f"{cleaned}_palette"
+        return palette_helpers.palette_file_stem(self)
 
     def _write_palette_png(self, file_path, entries, scale):
         """
         Save the palette as a PNG swatch strip.
         """
-        colors = [entry["rgb"] for entry in entries]
-        swatch_size = max(1, int(scale))
-        palette_image = Image.new("RGB", (len(colors) * swatch_size, swatch_size))
-
-        for index, rgb in enumerate(colors):
-            swatch = Image.new("RGB", (swatch_size, swatch_size), rgb)
-            palette_image.paste(swatch, (index * swatch_size, 0))
-
-        palette_image.save(file_path)
+        palette_helpers.write_palette_png(self, file_path, entries, scale)
 
     def _write_palette_jasc(self, file_path, entries):
         """
         Save the palette as a JASC PAL file.
         """
-        lines = ["JASC-PAL", "0100", str(len(entries))]
-        for entry in entries:
-            red, green, blue = entry["rgb"]
-            lines.append(f"{red} {green} {blue}")
-
-        with open(file_path, "w", encoding="utf-8") as palette_file:
-            palette_file.write("\n".join(lines) + "\n")
+        palette_helpers.write_palette_jasc(self, file_path, entries)
 
     def _write_palette_hex_file(self, file_path, entries):
         """
         Save the palette as a plain HEX list.
         """
-        lines = [self._rgb_to_hex(entry["rgb"]) for entry in entries]
-        with open(file_path, "w", encoding="utf-8") as palette_file:
-            palette_file.write("\n".join(lines) + "\n")
+        palette_helpers.write_palette_hex_file(self, file_path, entries)
 
     def _write_palette_gpl(self, file_path, entries):
         """
         Save the palette as a GIMP GPL file.
         """
-        lines = [
-            "GIMP Palette",
-            f"Name: {self._palette_file_stem()}",
-            "Columns: 4",
-            "#",
-        ]
-        for index, entry in enumerate(entries, start=1):
-            red, green, blue = entry["rgb"]
-            lines.append(f"{red:3d} {green:3d} {blue:3d} Color {index}")
-
-        with open(file_path, "w", encoding="utf-8") as palette_file:
-            palette_file.write("\n".join(lines) + "\n")
+        palette_helpers.write_palette_gpl(self, file_path, entries)
 
     def _write_palette_paintnet(self, file_path, entries):
         """
         Save the palette as a Paint.net text palette.
         """
-        lines = [
-            "; paint.net Palette File",
-            "; Generated by Weird Pixelator",
-            "; Colors are written as AARRGGBB hex values",
-        ]
-        for entry in entries:
-            red, green, blue = entry["rgb"]
-            lines.append(f"FF{red:02X}{green:02X}{blue:02X}")
-
-        with open(file_path, "w", encoding="utf-8") as palette_file:
-            palette_file.write("\n".join(lines) + "\n")
+        palette_helpers.write_palette_paintnet(self, file_path, entries)
 
     def _write_palette_ase(self, file_path, entries):
         """
         Save the palette as an Adobe Swatch Exchange file.
         """
-        blocks = []
-        for index, entry in enumerate(entries, start=1):
-            red, green, blue = entry["rgb"]
-            name = f"Color {index}"
-            name_data = name.encode("utf-16be") + b"\x00\x00"
-            name_length = len(name) + 1
-            block_data = b"".join([
-                struct.pack(">H", name_length),
-                name_data,
-                b"RGB ",
-                struct.pack(">fff", red / 255.0, green / 255.0, blue / 255.0),
-                struct.pack(">H", 0),
-            ])
-            blocks.append(struct.pack(">HI", 0x0001, len(block_data)) + block_data)
-
-        header = struct.pack(">4sHHI", b"ASEF", 1, 0, len(blocks))
-        with open(file_path, "wb") as palette_file:
-            palette_file.write(header)
-            for block in blocks:
-                palette_file.write(block)
+        palette_helpers.write_palette_ase(self, file_path, entries)
 
     def _export_palette_file(self, entries):
         """
         Save the current palette in the selected export format.
         """
-        format_name = self.palette_format_var.get()
-        format_info = self._get_palette_export_formats().get(format_name)
-        if format_info is None:
-            raise ValueError("Unsupported palette format.")
-
-        initial_dir = self.folder_path.get().strip() or os.getcwd()
-        file_path = filedialog.asksaveasfilename(
-            title="Save Palette",
-            defaultextension=format_info["extension"],
-            filetypes=format_info["filetypes"],
-            initialdir=initial_dir,
-            initialfile=f"{self._palette_file_stem()}{format_info['extension']}",
-        )
-        if not file_path:
-            return None
-
-        if format_name == "PNG Image (1x)":
-            self._write_palette_png(file_path, entries, 1)
-        elif format_name == "PNG Image (8x)":
-            self._write_palette_png(file_path, entries, 8)
-        elif format_name == "PNG Image (32x)":
-            self._write_palette_png(file_path, entries, 32)
-        elif format_name == "PAL File (JASC)":
-            self._write_palette_jasc(file_path, entries)
-        elif format_name == "Photoshop ASE":
-            self._write_palette_ase(file_path, entries)
-        elif format_name == "Paint.net TXT":
-            self._write_palette_paintnet(file_path, entries)
-        elif format_name == "GIMP GPL":
-            self._write_palette_gpl(file_path, entries)
-        elif format_name == "HEX File":
-            self._write_palette_hex_file(file_path, entries)
-        else:
-            raise ValueError("Unsupported palette format.")
-
-        return file_path
+        return palette_helpers.export_palette_file(self, entries)
 
     def _sorted_palette_entries(self):
         """
         Return palette entries in the currently selected sort order.
         """
-        entries = list(self.palette_entries)
-        sort_mode = self.palette_sort_var.get()
-
-        if sort_mode == "Hue":
-            entries.sort(key=lambda entry: self._rgb_to_hsv(entry["rgb"]))
-            return entries
-
-        if sort_mode == "Brightness":
-            entries.sort(key=lambda entry: self._get_color_luminance(entry["rgb"]))
-            return entries
-
-        entries.sort(key=lambda entry: (-entry["count"], -self._get_color_luminance(entry["rgb"])))
-        return entries
+        return palette_helpers.sorted_palette_entries(self)
 
     def update_palette_count(self, _=None):
         """
         Re-extract the palette when a palette already exists and the count changes.
         """
-        if self.palette_entries:
-            self._extract_palette_from_preview(save_to_file=False)
+        palette_helpers.update_palette_count(self, _)
 
     def update_palette_display(self, _=None):
         """
         Refresh the palette swatches and value list.
         """
-        if not self.palette_entries:
-            self._reset_palette_output(self.palette_status_var.get())
-            return
-
-        for child in self.palette_preview_inner.winfo_children():
-            child.destroy()
-
-        sorted_entries = self._sorted_palette_entries()
-        for column in range(8):
-            self.palette_preview_inner.grid_columnconfigure(column, weight=1)
-
-        for index, entry in enumerate(sorted_entries):
-            rgb = entry["rgb"]
-            hex_value = self._rgb_to_hex(rgb)
-            tile = tk.Frame(
-                self.palette_preview_inner,
-                bg=hex_value,
-                highlightbackground=hex_value,
-                highlightthickness=0,
-                bd=0,
-                cursor="hand2",
-                width=14,
-                height=14,
-            )
-            tile.grid(row=index // 8, column=index % 8, sticky="nsew", padx=0, pady=0)
-            tile.grid_propagate(False)
-
-            for widget in (tile,):
-                widget.bind("<Button-1>", lambda _event, color=rgb: self._copy_palette_hex(color))
-
-        lines = []
-        for index, entry in enumerate(sorted_entries, start=1):
-            color_text = self._format_palette_color(entry["rgb"])
-            ratio_text = f"{entry['ratio'] * 100:.1f}%"
-            lines.append(f"{index}. {color_text} • {ratio_text}")
-
-        self._set_palette_text("\n".join(lines))
+        palette_helpers.update_palette_display(self, _)
 
     def _extract_palette_from_preview(self, save_to_file=False):
         """
         Extract a palette from the current rendered preview image.
         """
-        if self.image_object is None or self.current_pil_image is None:
-            messagebox.showerror("Error", "Load an image before extracting a palette.")
-            return
-
-        preview_image = self.render_current_image(for_preview=True)
-        if preview_image is None:
-            messagebox.showerror("Error", "Unable to render the current preview for palette extraction.")
-            return
-
-        color_count = max(2, min(24, int(float(self.palette_count_slider.get()))))
-        entries = image_effects.extract_palette(preview_image, color_count)
-        if not entries:
-            self._reset_palette_output("No colors could be extracted from the current preview.")
-            return
-
-        self.palette_entries = entries
-        self.palette_status_var.set(f"Extracted {len(entries)} colors from the current preview.")
-        self.update_palette_display()
-
-        if save_to_file:
-            file_path = self._export_palette_file(self._sorted_palette_entries())
-            if file_path:
-                self.palette_status_var.set(f"Saved palette to {os.path.basename(file_path)}")
+        palette_helpers.extract_palette_from_preview_internal(self, save_to_file=save_to_file)
 
     def extract_palette_from_preview(self):
         """
         Extract a palette from the current preview.
         """
-        self._extract_palette_from_preview(save_to_file=False)
+        palette_helpers.extract_palette_from_preview(self)
 
     def save_palette_as(self):
         """
         Save the current extracted palette using the selected export format.
         """
-        if not self.palette_entries:
-            messagebox.showerror("Error", "Extract a palette before saving it.")
-            return
-
-        try:
-            file_path = self._export_palette_file(self._sorted_palette_entries())
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to save palette: {e}")
-            return
-
-        if file_path:
-            self.palette_status_var.set(f"Saved palette to {os.path.basename(file_path)}")
+        palette_helpers.save_palette_as(self)
 
     def _style_option_menu(self, menu):
         """
@@ -1693,16 +1256,34 @@ class App:
         scale.set(initial)
         return scale
 
-    def _create_crop_control(self, parent, row, column, edge, label):
-        """
-        Create a compact crop control with entry and slider.
-        """
-        target_var = {
+    def _crop_var(self, edge):
+        return {
             "left": self.crop_left_var,
             "right": self.crop_right_var,
             "top": self.crop_top_var,
             "bottom": self.crop_bottom_var,
         }[edge]
+
+    def _crop_slider(self, edge):
+        return {
+            "left": self.crop_left_slider,
+            "right": self.crop_right_slider,
+            "top": self.crop_top_slider,
+            "bottom": self.crop_bottom_slider,
+        }[edge]
+
+    def _read_crop_margins(self, width_limit, height_limit):
+        left = min(width_limit, max(0, int(float(self.crop_left_slider.get()))))
+        right = min(width_limit, max(0, int(float(self.crop_right_slider.get()))))
+        top = min(height_limit, max(0, int(float(self.crop_top_slider.get()))))
+        bottom = min(height_limit, max(0, int(float(self.crop_bottom_slider.get()))))
+        return left, right, top, bottom
+
+    def _create_crop_control(self, parent, row, column, edge, label):
+        """
+        Create a compact crop control with entry and slider.
+        """
+        target_var = self._crop_var(edge)
 
         container = tk.Frame(parent, bg=self.theme["panel"])
         container.grid(row=row, column=column, sticky="nsew", padx=(0, 6) if column == 0 else (6, 0), pady=(0, 8))
@@ -2059,14 +1640,7 @@ class App:
         """
         Refresh the frame counter shown in the animation section.
         """
-        frame_count = len(self.animation_frames)
-        if frame_count == 0:
-            self.animation_status_var.set("No frames added yet.")
-            return
-
-        first_width, first_height = self.animation_frames[0].size
-        suffix = " • showing latest 6" if frame_count > 6 else ""
-        self.animation_status_var.set(f"{frame_count} frame(s) • base {first_width} x {first_height}{suffix}")
+        animation_helpers.update_animation_status(self)
 
     def _update_animation_scroll_region(self, _event=None):
         """
@@ -2084,287 +1658,64 @@ class App:
         """
         Rebuild the compact thumbnail grid for captured animation frames.
         """
-        for child in self.animation_preview_inner.winfo_children():
-            child.destroy()
-
-        self.animation_preview_images = []
-
-        if not self.animation_frames:
-            empty_label = tk.Label(
-                self.animation_preview_inner,
-                text="Capture frames from the current preview to build an animation.",
-                fg=self.theme["muted"],
-                bg=self.theme["panel_soft"],
-                justify=tk.LEFT,
-                wraplength=300
-            )
-            empty_label.pack(anchor="w", padx=12, pady=18)
-            self._update_animation_status()
-            return
-
-        for column in range(3):
-            self.animation_preview_inner.grid_columnconfigure(column, weight=1)
-
-        visible_frames = list(enumerate(self.animation_frames, start=1))[-6:]
-
-        for display_index, (frame_index, frame) in enumerate(visible_frames):
-            tile = tk.Frame(
-                self.animation_preview_inner,
-                bg=self.theme["panel_alt"],
-                highlightbackground=self.theme["border"],
-                highlightthickness=1,
-                bd=0
-            )
-            tile.grid(row=display_index // 3, column=display_index % 3, sticky="nsew", padx=4, pady=4)
-
-            thumb = frame.copy()
-            thumb.thumbnail((92, 92), Image.LANCZOS)
-            photo = ImageTk.PhotoImage(thumb)
-            self.animation_preview_images.append(photo)
-
-            preview_label = tk.Label(tile, image=photo, bg=self.theme["panel_alt"])
-            preview_label.pack(padx=8, pady=(8, 4))
-
-            caption = tk.Label(
-                tile,
-                text=f"Frame {frame_index}\n{frame.size[0]} x {frame.size[1]}",
-                fg=self.theme["text"], bg=self.theme["panel_alt"],
-                justify=tk.CENTER
-            )
-            caption.pack(padx=8, pady=(0, 8))
-
-        self._update_animation_status()
+        animation_helpers.refresh_animation_preview_strip(self)
 
     def _get_animation_export_formats(self):
         """
         Return the supported animation export formats.
         """
-        return {
-            "GIF": {
-                "extension": ".gif",
-                "filetypes": [("GIF Animation", "*.gif")],
-            },
-            "MP4": {
-                "extension": ".mp4",
-                "filetypes": [("MP4 Video", "*.mp4")],
-            },
-            "Animated WebP": {
-                "extension": ".webp",
-                "filetypes": [("Animated WebP", "*.webp")],
-            },
-        }
+        return animation_helpers.get_animation_export_formats(self)
 
     def _prepare_animation_frames(self, target_size=None, flatten_alpha=False):
         """
         Normalize captured frames to a shared export size.
         """
-        if not self.animation_frames:
-            return []
-
-        if target_size is None:
-            target_size = self.animation_frames[0].size
-
-        prepared_frames = []
-        for frame in self.animation_frames:
-            working = frame.convert("RGBA")
-            if working.size != target_size:
-                working = ImageOps.pad(working, target_size, method=Image.LANCZOS, color=(0, 0, 0, 255))
-
-            if flatten_alpha:
-                background = Image.new("RGB", target_size, (0, 0, 0))
-                background.paste(working, mask=working.getchannel("A"))
-                prepared_frames.append(background)
-            else:
-                prepared_frames.append(working)
-
-        return prepared_frames
+        return animation_helpers.prepare_animation_frames(self, target_size=target_size, flatten_alpha=flatten_alpha)
 
     def add_animation_frame(self):
         """
         Capture the current full-resolution render as the next animation frame.
         """
-        if self.image_object is None:
-            messagebox.showerror("Error", "Load an image before adding animation frames.")
-            return
-
-        frame_image = self.render_current_image(for_preview=False)
-        if frame_image is None:
-            messagebox.showerror("Error", "Unable to render the current frame.")
-            return
-
-        self.animation_frames.append(frame_image.copy())
-        self._refresh_animation_preview_strip()
+        animation_helpers.add_animation_frame(self)
 
     def delete_last_animation_frame(self):
         """
         Remove the most recently captured animation frame.
         """
-        if not self.animation_frames:
-            messagebox.showerror("Error", "There are no animation frames to delete.")
-            return
-
-        self.animation_frames.pop()
-        self._refresh_animation_preview_strip()
+        animation_helpers.delete_last_animation_frame(self)
 
     def clear_animation_frames(self):
         """
         Remove all captured animation frames.
         """
-        self.animation_frames.clear()
-        self._refresh_animation_preview_strip()
+        animation_helpers.clear_animation_frames(self)
 
     def open_animation_export_modal(self):
         """
         Open a modal window for choosing animation export settings.
         """
-        if not self.animation_frames:
-            messagebox.showerror("Error", "Add at least one frame before exporting an animation.")
-            return
+        animation_helpers.open_animation_export_modal(self)
 
-        formats = self._get_animation_export_formats()
-        modal = tk.Toplevel(self.root)
-        modal.title("Export Animation")
-        modal.configure(bg=self.theme["panel"])
-        modal.transient(self.root)
-        modal.grab_set()
-        modal.resizable(False, False)
+    def _default_output_dir(self):
+        return export_helpers.default_output_dir(self)
 
-        format_var = tk.StringVar(value="GIF")
-        fps_var = tk.IntVar(value=8)
+    def _ask_save_file(self, title, defaultextension, filetypes, initialfile):
+        return export_helpers.ask_save_file(self, title, defaultextension, filetypes, initialfile)
 
-        tk.Label(
-            modal,
-            text=f"Frames: {len(self.animation_frames)}\nFrames with different sizes will be padded to the first frame when exported.",
-            fg=self.theme["muted"], bg=self.theme["panel"],
-            justify=tk.LEFT
-        ).grid(row=0, column=0, columnspan=2, sticky="w", padx=12, pady=(12, 8))
-
-        tk.Label(modal, text="Format:", fg=self.theme["text"], bg=self.theme["panel"]).grid(row=1, column=0, sticky="w", padx=12, pady=4)
-        format_menu = tk.OptionMenu(modal, format_var, *formats.keys())
-        self._style_option_menu(format_menu)
-        format_menu.grid(row=1, column=1, sticky="ew", padx=12, pady=4)
-
-        tk.Label(modal, text="FPS:", fg=self.theme["text"], bg=self.theme["panel"]).grid(row=2, column=0, sticky="w", padx=12, pady=4)
-        fps_spinbox = tk.Spinbox(
-            modal,
-            from_=1,
-            to=60,
-            textvariable=fps_var,
-            width=8,
-            bg=self.theme["field"],
-            fg=self.theme["text"],
-            insertbackground=self.theme["text"],
-            buttonbackground=self.theme["button"],
-            relief=tk.SUNKEN,
-            bd=2
-        )
-        fps_spinbox.grid(row=2, column=1, sticky="w", padx=12, pady=4)
-
-        button_row = tk.Frame(modal, bg=self.theme["panel"])
-        button_row.grid(row=3, column=0, columnspan=2, sticky="e", padx=12, pady=(12, 12))
-
-        tk.Button(button_row, text="Cancel", command=modal.destroy, **self._button_style(self.theme["button"])).pack(side=tk.LEFT, padx=(0, 6))
-        tk.Button(
-            button_row,
-            text="Export",
-            command=lambda: self._export_animation_from_modal(modal, format_var.get(), fps_var.get()),
-            **self._button_style(self.theme["button_alt"])
-        ).pack(side=tk.LEFT)
+    def _run_export_with_feedback(self, export_callable, failure_message, success_message, on_success=None):
+        return export_helpers.run_export_with_feedback(export_callable, failure_message, success_message, on_success=on_success)
 
     def _export_animation_from_modal(self, modal, format_name, fps_value):
         """
         Validate modal settings and export the animation.
         """
-        formats = self._get_animation_export_formats()
-        format_info = formats.get(format_name)
-        if format_info is None:
-            messagebox.showerror("Error", "Unsupported animation format.")
-            return
-
-        try:
-            fps = max(1, min(60, int(fps_value)))
-        except (TypeError, ValueError):
-            messagebox.showerror("Error", "FPS must be a whole number between 1 and 60.")
-            return
-
-        initial_dir = self.folder_path.get().strip() or os.getcwd()
-        file_path = filedialog.asksaveasfilename(
-            title="Export Animation",
-            defaultextension=format_info["extension"],
-            filetypes=format_info["filetypes"],
-            initialdir=initial_dir,
-            initialfile=f"Weird_Pixellator_Animation{format_info['extension']}"
-        )
-        if not file_path:
-            return
-
-        try:
-            self.export_animation(file_path, format_name, fps)
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to export animation: {e}")
-            return
-
-        modal.destroy()
-        messagebox.showinfo("Success", f"Animation exported to {file_path}")
+        animation_helpers.export_animation_from_modal(self, modal, format_name, fps_value)
 
     def export_animation(self, file_path, format_name, fps):
         """
         Export the captured frame sequence to the selected animation format.
         """
-        if not self.animation_frames:
-            raise ValueError("No animation frames available.")
-
-        duration_ms = max(1, int(round(1000 / max(1, fps))))
-        base_width, base_height = self.animation_frames[0].size
-
-        if format_name == "GIF":
-            frames = self._prepare_animation_frames(target_size=(base_width, base_height), flatten_alpha=False)
-            frames[0].save(
-                file_path,
-                save_all=True,
-                append_images=frames[1:],
-                duration=duration_ms,
-                loop=0,
-                disposal=2
-            )
-            return
-
-        if format_name == "Animated WebP":
-            frames = self._prepare_animation_frames(target_size=(base_width, base_height), flatten_alpha=False)
-            frames[0].save(
-                file_path,
-                format="WEBP",
-                save_all=True,
-                append_images=frames[1:],
-                duration=duration_ms,
-                loop=0,
-                lossless=True,
-                quality=90,
-                method=6
-            )
-            return
-
-        if format_name == "MP4":
-            try:
-                import imageio.v2 as imageio
-            except ImportError as exc:
-                raise RuntimeError("MP4 export requires the imageio packages from requirements.txt.") from exc
-
-            video_size = (base_width + (base_width % 2), base_height + (base_height % 2))
-            frames = self._prepare_animation_frames(target_size=video_size, flatten_alpha=True)
-            with imageio.get_writer(
-                file_path,
-                fps=fps,
-                codec="libx264",
-                quality=8,
-                pixelformat="yuv420p",
-                macro_block_size=1
-            ) as writer:
-                for frame in frames:
-                    writer.append_data(np.array(frame))
-            return
-
-        raise ValueError(f"Unsupported export format: {format_name}")
+        return animation_helpers.export_animation(self, file_path, format_name, fps)
 
     def _reset_controls_for_new_image(self):
         """
@@ -2427,318 +1778,79 @@ class App:
         """
         Update a crop entry without triggering recursive commits.
         """
-        target_var = {
-            "left": self.crop_left_var,
-            "right": self.crop_right_var,
-            "top": self.crop_top_var,
-            "bottom": self.crop_bottom_var,
-        }[edge]
-        self._updating_crop_entries = True
-        try:
-            target_var.set(str(int(value)))
-        finally:
-            self._updating_crop_entries = False
+        crop_helpers.set_crop_entry_value(self, edge, value)
 
     def _set_crop_preset_value(self, value):
         """
         Update the crop preset selector without triggering preset reapplication.
         """
-        self._updating_crop_preset = True
-        try:
-            self.crop_preset_var.set(value)
-        finally:
-            self._updating_crop_preset = False
+        crop_helpers.set_crop_preset_value(self, value)
 
     def _set_crop_controls(self, left, right, top, bottom):
         """
         Update all crop controls in one synchronized operation.
         """
-        self._syncing_crop_controls = True
-        try:
-            self.crop_left_slider.set(left)
-            self.crop_right_slider.set(right)
-            self.crop_top_slider.set(top)
-            self.crop_bottom_slider.set(bottom)
-            self._set_crop_entry_value("left", left)
-            self._set_crop_entry_value("right", right)
-            self._set_crop_entry_value("top", top)
-            self._set_crop_entry_value("bottom", bottom)
-        finally:
-            self._syncing_crop_controls = False
+        crop_helpers.set_crop_controls(self, left, right, top, bottom)
 
     def _get_crop_presets(self):
         """
         Return supported crop aspect presets.
         """
-        return {
-            "1:1": 1.0,
-            "3:2": 3.0 / 2.0,
-            "4:5": 4.0 / 5.0,
-            "16:9": 16.0 / 9.0,
-            "9:16": 9.0 / 16.0,
-            "21:9": 21.0 / 9.0,
-        }
+        return crop_helpers.get_crop_presets(self)
 
     def _update_crop_metadata(self):
         """
         Refresh the live crop size readout and preset state.
         """
-        if self.current_pil_image is None:
-            self.crop_size_var.set("Final Size: -")
-            self._set_crop_preset_value("Free")
-            self._update_preview_metadata()
-            return
-
-        left, top, right, bottom = self._get_active_crop_box(self.current_pil_image.size)
-        crop_width = max(1, right - left)
-        crop_height = max(1, bottom - top)
-        self.crop_size_var.set(f"Final Size: {crop_width} x {crop_height}")
-
-        ratio = crop_width / crop_height if crop_height else 0.0
-        matched_preset = "Free"
-        for label, target_ratio in self._get_crop_presets().items():
-            if abs(ratio - target_ratio) <= 0.03:
-                matched_preset = label
-                break
-
-        self._set_crop_preset_value(matched_preset)
-        self._update_preview_metadata()
+        crop_helpers.update_crop_metadata(self)
 
     def _sync_crop_controls_to_image(self, reset_values=True):
         """
         Sync crop slider ranges and values to the currently loaded image.
         """
-        if self.current_pil_image is None:
-            max_width = 1
-            max_height = 1
-        else:
-            max_width, max_height = self.current_pil_image.size
-
-        width_limit = max(0, max_width - 1)
-        height_limit = max(0, max_height - 1)
-
-        self.crop_left_slider.configure(from_=0, to=width_limit)
-        self.crop_right_slider.configure(from_=0, to=width_limit)
-        self.crop_top_slider.configure(from_=0, to=height_limit)
-        self.crop_bottom_slider.configure(from_=0, to=height_limit)
-
-        if reset_values:
-            left = right = top = bottom = 0
-        else:
-            left = min(width_limit, max(0, int(float(self.crop_left_slider.get()))))
-            right = min(width_limit, max(0, int(float(self.crop_right_slider.get()))))
-            top = min(height_limit, max(0, int(float(self.crop_top_slider.get()))))
-            bottom = min(height_limit, max(0, int(float(self.crop_bottom_slider.get()))))
-
-        self._set_crop_controls(left, right, top, bottom)
-
-        self._normalize_crop_controls()
+        crop_helpers.sync_crop_controls_to_image(self, reset_values=reset_values)
 
     def _normalize_crop_controls(self, preferred_edge=None):
         """
         Clamp crop margins so the remaining visible area is always at least 1 pixel.
         """
-        if self.current_pil_image is None:
-            return
-
-        width, height = self.current_pil_image.size
-        width_limit = max(0, width - 1)
-        height_limit = max(0, height - 1)
-
-        left = min(width_limit, max(0, int(float(self.crop_left_slider.get()))))
-        right = min(width_limit, max(0, int(float(self.crop_right_slider.get()))))
-        top = min(height_limit, max(0, int(float(self.crop_top_slider.get()))))
-        bottom = min(height_limit, max(0, int(float(self.crop_bottom_slider.get()))))
-
-        if left + right > width_limit:
-            if preferred_edge == "right":
-                right = max(0, width_limit - left)
-            else:
-                left = max(0, width_limit - right)
-
-        if top + bottom > height_limit:
-            if preferred_edge == "bottom":
-                bottom = max(0, height_limit - top)
-            else:
-                top = max(0, height_limit - bottom)
-
-        max_left = max(0, width_limit - right)
-        max_right = max(0, width_limit - left)
-        max_top = max(0, height_limit - bottom)
-        max_bottom = max(0, height_limit - top)
-
-        self._syncing_crop_controls = True
-        try:
-            self.crop_left_slider.configure(to=max_left)
-            self.crop_right_slider.configure(to=max_right)
-            self.crop_top_slider.configure(to=max_top)
-            self.crop_bottom_slider.configure(to=max_bottom)
-
-            self.crop_left_slider.set(min(left, max_left))
-            self.crop_right_slider.set(min(right, max_right))
-            self.crop_top_slider.set(min(top, max_top))
-            self.crop_bottom_slider.set(min(bottom, max_bottom))
-
-            self._set_crop_entry_value("left", self.crop_left_slider.get())
-            self._set_crop_entry_value("right", self.crop_right_slider.get())
-            self._set_crop_entry_value("top", self.crop_top_slider.get())
-            self._set_crop_entry_value("bottom", self.crop_bottom_slider.get())
-        finally:
-            self._syncing_crop_controls = False
-
-        self._update_crop_metadata()
+        crop_helpers.normalize_crop_controls(self, preferred_edge=preferred_edge)
 
     def _get_active_crop_box(self, image_size):
         """
         Return the active crop rectangle as left, top, right, bottom.
         """
-        width, height = image_size
-        width_limit = max(0, width - 1)
-        height_limit = max(0, height - 1)
-
-        left = min(width_limit, max(0, int(float(self.crop_left_slider.get()))))
-        right = min(width_limit, max(0, int(float(self.crop_right_slider.get()))))
-        top = min(height_limit, max(0, int(float(self.crop_top_slider.get()))))
-        bottom = min(height_limit, max(0, int(float(self.crop_bottom_slider.get()))))
-
-        if left + right > width_limit:
-            left = max(0, width_limit - right)
-        if top + bottom > height_limit:
-            top = max(0, height_limit - bottom)
-
-        return (left, top, width - right, height - bottom)
+        return crop_helpers.get_active_crop_box(self, image_size)
 
     def _crop_to_visible_area(self, pil_img, reference_size=None):
         """
         Crop an image to the currently visible area.
         """
-        if pil_img is None:
-            return None
-
-        target_size = reference_size if reference_size is not None else pil_img.size
-        working_img = pil_img
-        if pil_img.size != target_size:
-            working_img = pil_img.resize(target_size, Image.LANCZOS)
-
-        crop_box = self._get_active_crop_box(target_size)
-        if crop_box == (0, 0, target_size[0], target_size[1]):
-            return working_img
-
-        return working_img.crop(crop_box)
+        return crop_helpers.crop_to_visible_area(self, pil_img, reference_size=reference_size)
 
     def update_crop(self, edge=None):
         """
         Update crop entries and refresh the preview.
         """
-        if self._syncing_crop_controls:
-            return
-
-        self._normalize_crop_controls(preferred_edge=edge)
-        self.request_preview_update()
+        crop_helpers.update_crop(self, edge=edge)
 
     def reset_crop(self):
         """
         Reset all crop values back to the full image.
         """
-        self._set_crop_controls(0, 0, 0, 0)
-        self._normalize_crop_controls()
-        self._set_crop_preset_value("Free")
-        self.request_preview_update()
+        crop_helpers.reset_crop(self)
 
     def apply_crop_preset(self, preset_name):
         """
         Apply a predefined aspect ratio to the visible crop area.
         """
-        if self._updating_crop_preset or self.current_pil_image is None:
-            return
-
-        if preset_name == "Free":
-            self._set_crop_preset_value("Free")
-            return
-
-        target_ratio = self._get_crop_presets().get(preset_name)
-        if target_ratio is None:
-            return
-
-        width, height = self.current_pil_image.size
-        left, top, right, bottom = self._get_active_crop_box((width, height))
-        current_width = max(1, right - left)
-        current_height = max(1, bottom - top)
-
-        if current_width / current_height > target_ratio:
-            target_height = current_height
-            target_width = max(1, int(round(target_height * target_ratio)))
-        else:
-            target_width = current_width
-            target_height = max(1, int(round(target_width / target_ratio)))
-
-        target_width = min(width, max(1, target_width))
-        target_height = min(height, max(1, target_height))
-
-        center_x = (left + right) / 2.0
-        center_y = (top + bottom) / 2.0
-        new_left = int(round(center_x - (target_width / 2.0)))
-        new_top = int(round(center_y - (target_height / 2.0)))
-        new_left = max(0, min(width - target_width, new_left))
-        new_top = max(0, min(height - target_height, new_top))
-
-        new_right = width - (new_left + target_width)
-        new_bottom = height - (new_top + target_height)
-
-        self._set_crop_controls(new_left, new_right, new_top, new_bottom)
-        self._normalize_crop_controls()
-        self._set_crop_preset_value(preset_name)
-        self.request_preview_update()
+        crop_helpers.apply_crop_preset(self, preset_name)
 
     def commit_crop_entry(self, edge):
         """
         Apply a typed crop size, clamping it to the image bounds.
         """
-        if self._updating_crop_entries or self._syncing_crop_controls:
-            return
-
-        slider = {
-            "left": self.crop_left_slider,
-            "right": self.crop_right_slider,
-            "top": self.crop_top_slider,
-            "bottom": self.crop_bottom_slider,
-        }[edge]
-        target_var = {
-            "left": self.crop_left_var,
-            "right": self.crop_right_var,
-            "top": self.crop_top_var,
-            "bottom": self.crop_bottom_var,
-        }[edge]
-
-        current_value = int(float(slider.get()))
-        raw_value = target_var.get().strip().lower().replace("px", "")
-
-        if self.current_pil_image is None:
-            max_value = 0
-        else:
-            width, height = self.current_pil_image.size
-            if edge == "left":
-                max_value = max(0, width - 1 - int(float(self.crop_right_slider.get())))
-            elif edge == "right":
-                max_value = max(0, width - 1 - int(float(self.crop_left_slider.get())))
-            elif edge == "top":
-                max_value = max(0, height - 1 - int(float(self.crop_bottom_slider.get())))
-            else:
-                max_value = max(0, height - 1 - int(float(self.crop_top_slider.get())))
-
-        try:
-            parsed_value = int(float(raw_value))
-        except ValueError:
-            parsed_value = current_value
-
-        clamped_value = max(0, min(max_value, parsed_value))
-        self._set_crop_entry_value(edge, clamped_value)
-
-        if current_value != clamped_value:
-            slider.set(clamped_value)
-
-        self._normalize_crop_controls(preferred_edge=edge)
-        self.request_preview_update()
+        crop_helpers.commit_crop_entry(self, edge)
 
     def begin_bulk_update(self):
         """
@@ -3293,237 +2405,91 @@ class App:
         """
         Return effect values modulated by Intensity controls for a video frame index.
         """
-        if not self.is_video_mode or not self.video_intensity_controls:
-            return dict(base_values)
-
-        specs = self._video_effect_specs()
-        values = dict(base_values)
-        for key, controls in self.video_intensity_controls.items():
-            spec = specs.get(key)
-            if spec is None:
-                continue
-
-            every_n = max(1, int(float(controls["step"].get())))
-            drift_pct = max(0.0, min(100.0, float(controls["drift"].get()))) / 100.0
-            if drift_pct <= 0.0:
-                continue
-
-            if spec["type"] == "bool":
-                if ((frame_index // every_n) % 2) == 1:
-                    values[key] = not bool(base_values.get(key, False))
-                continue
-
-            base_value = float(base_values.get(key, spec["default"]))
-            phase = (frame_index / float(every_n)) * 0.35
-            wave = float(np.sin(phase))
-            candidate = base_value * (1.0 + (wave * drift_pct))
-
-            minimum = float(spec["min"])
-            maximum = float(spec["max"])
-
-            if abs(base_value) <= 0.001 and (maximum - minimum) > 0.0:
-                midpoint = 0.5 * (minimum + maximum)
-                span = 0.5 * (maximum - minimum)
-                candidate = midpoint + (span * wave * drift_pct)
-
-            candidate = max(minimum, min(maximum, candidate))
-            if spec["type"] == "int":
-                candidate = int(round(candidate))
-            values[key] = candidate
-
-        return values
+        return render_pipeline_helpers.modulate_video_effect_values(self, frame_index, base_values)
 
     def _render_frame_with_values(self, source_image, effect_values, for_preview=False, frame_index=0):
         """
         Render a single frame (image or video frame) using supplied effect values.
         """
-        if source_image is None:
-            return None
-
-        base_reference_size = self.current_pil_image.size if self.current_pil_image is not None else source_image.size
-        base_source = self._crop_to_visible_area(source_image, base_reference_size)
-        blend_source = self._crop_to_visible_area(self.blend_image_pil, base_reference_size)
-
-        if for_preview:
-            preview_size = self._get_preview_processing_size(base_source.size)
-            if preview_size != base_source.size:
-                base_source = base_source.resize(preview_size, Image.LANCZOS)
-                if blend_source is not None:
-                    blend_source = blend_source.resize(preview_size, Image.LANCZOS)
-
-        img = self.process_effects_on_image(base_source, effect_values=effect_values)
-        if blend_source is not None:
-            overlay_processed = self.process_effects_on_image(blend_source, effect_values=effect_values)
-            blend_factor = float(self.blend_slider.get()) if hasattr(self, 'blend_slider') else 0.0
-            if blend_factor > 0.0:
-                img = image_effects.blend_images(img, overlay_processed, blend_factor)
-
-        if img is None:
-            return None
-
-        img = self._apply_manual_blending(img, frame_index=frame_index)
-        img = self.apply_crt_effects(img, effect_values=effect_values)
-        return self.apply_export_compression(img)
+        return render_pipeline_helpers.render_frame_with_values(
+            self,
+            source_image,
+            effect_values,
+            for_preview=for_preview,
+            frame_index=frame_index,
+        )
 
     def render_current_image(self, for_preview=False):
         """
         Render the current image using the active controls.
         For preview rendering, CRT effects are applied on a reduced-size copy for speed.
         """
-        if self.image_object is None or self.current_pil_image is None:
-            return None
-
-        base_values = self._collect_effect_values()
-        values = self._modulate_video_effect_values(0, base_values) if self.is_video_mode else base_values
-        return self._render_frame_with_values(self.current_pil_image, values, for_preview=for_preview, frame_index=0)
+        return render_pipeline_helpers.render_current_image(self, for_preview=for_preview)
 
     def apply_pipeline(self):
         """
         Applies all effects in a pipeline, ensuring modifications are cumulative.
         """
-        if self.image_object:
-            preview_img = self.render_current_image(for_preview=True)
-            if preview_img is not None:
-                self.pipeline_image = preview_img
-                self.display_image(preview_img)
+        render_pipeline_helpers.apply_pipeline(self)
+
+    def _trigger_preview_update(self, _=None):
+        self.request_preview_update()
+
+    def _effect_float(self, effect_values, key, default=0.0):
+        try:
+            return float(effect_values.get(key, default))
+        except Exception:
+            return float(default)
+
+    def _effect_int(self, effect_values, key, default=0):
+        try:
+            return int(effect_values.get(key, default))
+        except Exception:
+            return int(default)
 
     def update_effects(self, _=None):
-        self.request_preview_update()
+        self._trigger_preview_update()
 
     def update_colorize(self, _=None):
-        self.request_preview_update()
+        self._trigger_preview_update()
 
     def update_confuser(self, _=None):
         """
         Updates the confuser effects (blur and color reduction) based on the sliders.
         """
         # Re-run the full pipeline so confuser effects are applied in sequence
-        self.request_preview_update()
+        self._trigger_preview_update()
 
     def update_crt(self, _=None):
         """
         Updates the CRT effects.
         """
-        self.request_preview_update()
+        self._trigger_preview_update()
 
     def update_bending(self, _=None):
         """
         Updates the databending effect.
         """
-        self.request_preview_update()
+        self._trigger_preview_update()
 
     def update_datamosh(self, _=None):
         """
         Updates the datamoshing effect.
         """
-        self.request_preview_update()
+        self._trigger_preview_update()
 
     def process_effects_on_image(self, pil_img, effect_values=None):
         """
         Apply the current UI-controlled effects to a given PIL image and return the result.
         This mirrors the main pipeline but operates on an arbitrary image (used for blending).
         """
-        if pil_img is None:
-            return None
-
-        if effect_values is None:
-            effect_values = self._collect_effect_values()
-
-        # Pixelate: use a temporary ImageObject so we can call the existing pixelate func
-        arr = np.array(pil_img.convert("RGBA"))
-        temp_obj = ImageObject(name="temp", size=pil_img.size, pixel_array=arr)
-
-        scale_factor = float(effect_values.get("pixel_scale", 1.0))
-        jitter_val = int(effect_values.get("jitter", 0))
-        block_val = int(effect_values.get("block", 0))
-        sort_val = int(effect_values.get("sort", 0))
-
-        img = image_effects.pixelate(temp_obj, scale_factor, jitter_val, block_val, sort_val)
-
-        # Colorize effects
-        hue_shift = int(effect_values.get("hue", 0))
-        saturation_factor = float(effect_values.get("saturation", 1.0))
-        contrast_factor = float(effect_values.get("contrast", 1.0))
-        invert_factor = float(effect_values.get("invert", False))
-
-        img = image_effects.adjust_hue(img, hue_shift)
-        img = image_effects.adjust_saturation(img, saturation_factor)
-        img = image_effects.adjust_contrast(img, contrast_factor)
-        img = image_effects.adjust_invert(img, invert_factor)
-
-        # Confuser effects
-        try:
-            blur_radius = int(effect_values.get("blur", 0))
-            color_bins = int(effect_values.get("color_reducer", 256))
-            legacy_bins = int(effect_values.get("legacy_collapse", 256))
-        except Exception:
-            blur_radius = 0
-            color_bins = 256
-            legacy_bins = 256
-
-        if blur_radius > 0:
-            img = img.filter(ImageFilter.GaussianBlur(blur_radius))
-
-        if color_bins < 256:
-            img = image_effects.reduce_colors(img, color_bins)
-
-        # Apply legacy collapse if requested
-        if legacy_bins < 256:
-            img = image_effects.reduce_colors_legacy(img, legacy_bins)
-
-        try:
-            bend_amount = float(effect_values.get("bending", 0.0))
-        except Exception:
-            bend_amount = 0.0
-
-        if bend_amount > 0.0:
-            img = image_effects.apply_data_bending(img, bend_amount, effect_values.get("bend_mode", self.bend_mode_var.get()))
-
-        try:
-            datamosh_amount = float(effect_values.get("datamosh", 0.0))
-        except Exception:
-            datamosh_amount = 0.0
-
-        if datamosh_amount > 0.0:
-            img = image_effects.apply_datamosh(img, datamosh_amount, effect_values.get("datamosh_mode", self.datamosh_mode_var.get()))
-
-        # Random pixelization (applies to RGB only)
-        try:
-            random_factor = float(effect_values.get("random_pixels", 0.0))
-        except Exception:
-            random_factor = 0.0
-
-        if random_factor > 0.0:
-            img = image_effects.randomize_pixels(img, random_factor)
-
-        return img
+        return render_pipeline_helpers.process_effects_on_image(self, pil_img, effect_values=effect_values)
 
     def apply_crt_effects(self, img, effect_values=None):
         """
         Apply CRT-style post-processing to the fully composited image.
         """
-        if img is None:
-            return None
-
-        if effect_values is None:
-            effect_values = self._collect_effect_values()
-
-        scanline_strength = int(effect_values.get("scanlines", 0))
-        curvature_strength = int(effect_values.get("curvature", 0))
-        distortion_strength = int(effect_values.get("distortion", 0))
-        glow_strength = int(effect_values.get("glow", 0))
-        noise_strength = int(effect_values.get("noise", 0))
-        rgb_shift = int(effect_values.get("rgb_shift", 0))
-        vignette_strength = int(effect_values.get("vignette", 0))
-
-        img = image_effects.apply_horizontal_distortion(img, distortion_strength)
-        img = image_effects.apply_screen_curvature(img, curvature_strength)
-        img = image_effects.apply_scanlines(img, scanline_strength)
-        img = image_effects.apply_rgb_shift(img, rgb_shift)
-        img = image_effects.apply_phosphor_glow(img, glow_strength)
-        img = image_effects.apply_static_noise(img, noise_strength)
-        img = image_effects.apply_vignette(img, vignette_strength)
-        return img
+        return render_pipeline_helpers.apply_crt_effects(self, img, effect_values=effect_values)
 
     def upload_blend_image(self):
         """
@@ -3544,7 +2510,7 @@ class App:
         """
         Re-run pipeline when blend slider changes.
         """
-        self.request_preview_update()
+        self._trigger_preview_update()
 
     def reset_pipeline(self):
         """
@@ -3558,101 +2524,44 @@ class App:
         self.root.after(50, self._execute_upload)
 
     def _is_video_path(self, path):
-        ext = os.path.splitext(path)[1].lower()
-        return ext in {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"}
+        return media_io_helpers.is_video_path(path)
+
+    def _close_video_preview_window(self):
+        media_io_helpers.close_video_preview_window(self)
+
+    def _read_video_source_snapshot(self, file_path):
+        return media_io_helpers.read_video_source_snapshot(file_path)
+
+    def _apply_loaded_media(self, file_path, img, is_video_mode, video_fps=12.0, video_frame_count=0, select_intensity_tab=False):
+        media_io_helpers.apply_loaded_media(
+            self,
+            file_path,
+            img,
+            is_video_mode,
+            video_fps=video_fps,
+            video_frame_count=video_frame_count,
+            select_intensity_tab=select_intensity_tab,
+        )
 
     def _load_image_file(self, file_path):
-        if self.video_preview_window is not None and self.video_preview_window.winfo_exists():
-            self.video_preview_window.destroy()
-
+        self._close_video_preview_window()
         img = Image.open(file_path).convert("RGBA")
-        width, height = img.size
-        pixel_array = np.array(img)
-
-        self.image_object = ImageObject(name=os.path.basename(file_path), size=(width, height), pixel_array=pixel_array)
-        self.image_source_path = file_path
-        self.current_pil_image = img
-        self.is_video_mode = False
-        self.video_source_path = None
-        self.video_frame_count = 0
-        self.video_fps = 12.0
-        self._sync_media_tabs()
-        self._reset_controls_for_new_image()
-        self.disable_manual_blending()
-        self._update_video_action_buttons()
-        self.pipeline_image = img.copy()
-        self.display_image(img)
+        self._apply_loaded_media(file_path, img, is_video_mode=False)
 
     def _load_video_file(self, file_path):
-        if self.video_preview_window is not None and self.video_preview_window.winfo_exists():
-            self.video_preview_window.destroy()
-
-        reader = imageio.get_reader(file_path)
-        try:
-            first = reader.get_data(0)
-            meta = reader.get_meta_data() or {}
-            fps = float(meta.get("fps", 12.0) or 12.0)
-            frame_count = 0
-            try:
-                frame_count = int(meta.get("nframes", 0) or 0)
-            except Exception:
-                frame_count = 0
-            if frame_count <= 0:
-                try:
-                    frame_count = int(reader.count_frames())
-                except Exception:
-                    frame_count = 0
-        finally:
-            reader.close()
-
-        img = Image.fromarray(first).convert("RGBA")
-        width, height = img.size
-        pixel_array = np.array(img)
-
-        self.image_object = ImageObject(name=os.path.basename(file_path), size=(width, height), pixel_array=pixel_array)
-        self.image_source_path = file_path
-        self.current_pil_image = img
-        self.is_video_mode = True
-        self.video_source_path = file_path
-        self.video_fps = max(1.0, fps)
-        self.video_frame_count = max(0, frame_count)
-
-        self._sync_media_tabs()
-        self._reset_controls_for_new_image()
-        self.disable_manual_blending()
-        self._refresh_video_intensity_controls(force=True)
-        self._update_video_action_buttons()
-        self.pipeline_image = img.copy()
-        self.display_image(img)
-
-        try:
-            self.controls_notebook.select(self.intensity_tab)
-        except tk.TclError:
-            pass
+        self._close_video_preview_window()
+        img, fps, frame_count = self._read_video_source_snapshot(file_path)
+        self._apply_loaded_media(
+            file_path,
+            img,
+            is_video_mode=True,
+            video_fps=fps,
+            video_frame_count=frame_count,
+            select_intensity_tab=True,
+        )
 
     def _execute_upload(self):
-        try:
-            # On some macOS versions, the native dialog crashes if not called carefully
-            file_path = filedialog.askopenfilename(
-                title="Select an Image or Video",
-                filetypes=[
-                    ("Supported Media", "*.png *.jpg *.jpeg *.gif *.bmp *.mp4 *.mov *.avi *.mkv *.webm *.m4v"),
-                    ("Image Files", "*.png *.jpg *.jpeg *.gif *.bmp"),
-                    ("Video Files", "*.mp4 *.mov *.avi *.mkv *.webm *.m4v"),
-                ]
-            )
-            
-            if not file_path:
-                return
-
-            if self._is_video_path(file_path):
-                self._load_video_file(file_path)
-            else:
-                self._load_image_file(file_path)
-            
-        except Exception as e:
-            print(f"Error loading or processing media: {e}")
-            messagebox.showerror("Error", f"Failed to load media: {e}")
+        media_io_helpers.execute_upload(self)
 
     def _iter_video_frames(self):
         """
@@ -3754,24 +2663,20 @@ class App:
             messagebox.showerror("Error", "Load a video before exporting.")
             return
 
-        initial_dir = self.folder_path.get().strip() or os.getcwd()
-        file_path = filedialog.asksaveasfilename(
+        file_path = self._ask_save_file(
             title="Export Video",
             defaultextension=".mp4",
             filetypes=[("MP4 Video", "*.mp4")],
-            initialdir=initial_dir,
             initialfile="Weird_Pixelator_Video.mp4",
         )
         if not file_path:
             return
 
-        try:
-            self.export_video(file_path)
-        except Exception as exc:
-            messagebox.showerror("Error", f"Failed to export video: {exc}")
-            return
-
-        messagebox.showinfo("Success", f"Video exported to {file_path}")
+        self._run_export_with_feedback(
+            export_callable=lambda: self.export_video(file_path),
+            failure_message="Failed to export video",
+            success_message=f"Video exported to {file_path}",
+        )
 
     def export_video(self, file_path):
         """
@@ -3998,6 +2903,12 @@ class App:
         if folder_selected:
             self.folder_path.set(folder_selected)
 
+    def _resolve_output_folder(self):
+        return export_helpers.resolve_output_folder(self)
+
+    def _next_available_png_path(self, folder, base_name):
+        return export_helpers.next_available_png_path(folder, base_name)
+
     def save_image(self):
         """
         Saves the current image to the selected folder.
@@ -4006,12 +2917,10 @@ class App:
             messagebox.showerror("Error", "No image to save.")
             return
 
-        folder = self.folder_path.get()
+        folder = self._resolve_output_folder()
         if not folder:
-            folder = filedialog.askdirectory(title="Select Folder")
-            if not folder:
-                messagebox.showerror("Error", "No folder selected.")
-                return
+            messagebox.showerror("Error", "No folder selected.")
+            return
 
         # Prompt for filename (without extension)
         default_name = "Weird_Pixellator_Output"
@@ -4023,20 +2932,7 @@ class App:
             messagebox.showerror("Error", "Invalid file name.")
             return
 
-        # Ensure .png extension
-        base_filename = f"{name}.png"
-        file_path = os.path.join(folder, base_filename)
-
-        # If file exists, append a numeric suffix
-        if os.path.exists(file_path):
-            i = 1
-            name_root = name
-            while True:
-                candidate = os.path.join(folder, f"{name_root}_{i}.png")
-                if not os.path.exists(candidate):
-                    file_path = candidate
-                    break
-                i += 1
+        file_path = self._next_available_png_path(folder, name)
 
         try:
             final_image = self.render_current_image(for_preview=False)

@@ -153,7 +153,7 @@ If you want lower Gatekeeper friction, sign and notarize it.
 ### Linux
 
 ```bash
-pyinstaller --noconfirm --windowed --name "Weird Pixelator" main.py
+pyinstaller --noconfirm --windowed --name "Weird Pixelator" --copy-metadata imageio --copy-metadata imageio-ffmpeg main.py
 ```
 
 Output to upload:

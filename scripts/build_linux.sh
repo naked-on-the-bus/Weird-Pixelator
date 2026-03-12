@@ -10,7 +10,13 @@ if [[ ! -x "$python_bin" ]]; then
   exit 1
 fi
 
-"$python_bin" -m PyInstaller --noconfirm --windowed --name "Weird Pixelator" main.py
+"$python_bin" -m PyInstaller \
+  --noconfirm \
+  --windowed \
+  --name "Weird Pixelator" \
+  --copy-metadata imageio \
+  --copy-metadata imageio-ffmpeg \
+  main.py
 
 cd dist
 tar -czf "Weird Pixelator Linux.tar.gz" "Weird Pixelator"

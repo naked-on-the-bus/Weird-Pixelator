@@ -1,18 +1,20 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 from pathlib import Path
+from PyInstaller.utils.hooks import copy_metadata
 
 
 APP_NAME = 'Weird Pixelator'
 APP_VERSION = '1.0.0'
 ICON_PATH = str(Path(SPECPATH) / 'assets' / 'icon.ico')
+METADATA_DATAS = copy_metadata('imageio') + copy_metadata('imageio-ffmpeg')
 
 
 a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=METADATA_DATAS,
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

@@ -1,5 +1,6 @@
 import numpy as np
 
+
 class ImageObject:
     def __init__(self, name, size, pixel_array):
         self.name = name

@@ -5,7 +5,7 @@ import numpy as np
 from PIL import Image
 from tkinter import filedialog, messagebox
 
-from image_object import ImageObject
+from engine.image_object import ImageObject
 
 
 def is_video_path(path):

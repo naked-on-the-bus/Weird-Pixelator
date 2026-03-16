@@ -1,8 +1,8 @@
 import numpy as np
 from PIL import Image, ImageFilter
 
-from image_object import ImageObject
-import image_effects
+from engine.image_object import ImageObject
+from engine import effects
 
 
 def modulate_video_effect_values(app, frame_index, base_values):
@@ -55,25 +55,33 @@ def render_frame_with_values(app, source_image, effect_values, for_preview=False
     base_source = app._crop_to_visible_area(source_image, base_reference_size)
     blend_source = app._crop_to_visible_area(app.blend_image_pil, base_reference_size)
 
+    # Compute the preview size — used both for scaling and as the reference
+    # for normalizing pixel-based effect parameters.
+    preview_size = app._get_preview_processing_size(base_source.size)
+
     if for_preview:
-        preview_size = app._get_preview_processing_size(base_source.size)
         if preview_size != base_source.size:
             base_source = base_source.resize(preview_size, Image.LANCZOS)
             if blend_source is not None:
                 blend_source = blend_source.resize(preview_size, Image.LANCZOS)
+        render_scale = 1.0
+    else:
+        # Scale factor that normalizes pixel-based effect parameters so that
+        # the full-resolution export matches the preview appearance.
+        render_scale = base_source.size[0] / max(1, preview_size[0])
 
-    img = process_effects_on_image(app, base_source, effect_values=effect_values)
+    img = process_effects_on_image(app, base_source, effect_values=effect_values, render_scale=render_scale)
     if blend_source is not None:
-        overlay_processed = process_effects_on_image(app, blend_source, effect_values=effect_values)
+        overlay_processed = process_effects_on_image(app, blend_source, effect_values=effect_values, render_scale=render_scale)
         blend_factor = float(app.blend_slider.get()) if hasattr(app, "blend_slider") else 0.0
         if blend_factor > 0.0:
-            img = image_effects.blend_images(img, overlay_processed, blend_factor)
+            img = effects.blend_images(img, overlay_processed, blend_factor)
 
     if img is None:
         return None
 
     img = app._apply_manual_blending(img, frame_index=frame_index)
-    img = apply_crt_effects(app, img, effect_values=effect_values)
+    img = apply_crt_effects(app, img, effect_values=effect_values, render_scale=render_scale)
     return app.apply_export_compression(img)
 
 
@@ -94,7 +102,7 @@ def apply_pipeline(app):
             app.display_image(preview_img)
 
 
-def process_effects_on_image(app, pil_img, effect_values=None):
+def process_effects_on_image(app, pil_img, effect_values=None, render_scale=1.0):
     if pil_img is None:
         return None
 
@@ -109,50 +117,51 @@ def process_effects_on_image(app, pil_img, effect_values=None):
     block_val = int(effect_values.get("block", 0))
     sort_val = int(effect_values.get("sort", 0))
 
-    img = image_effects.pixelate(temp_obj, scale_factor, jitter_val, block_val, sort_val)
+    img = effects.pixelate(temp_obj, scale_factor, jitter_val, block_val, sort_val, render_scale=render_scale)
 
     hue_shift = int(effect_values.get("hue", 0))
     saturation_factor = float(effect_values.get("saturation", 1.0))
     contrast_factor = float(effect_values.get("contrast", 1.0))
     invert_factor = float(effect_values.get("invert", False))
 
-    img = image_effects.adjust_hue(img, hue_shift)
-    img = image_effects.adjust_saturation(img, saturation_factor)
-    img = image_effects.adjust_contrast(img, contrast_factor)
-    img = image_effects.adjust_invert(img, invert_factor)
+    img = effects.adjust_hue(img, hue_shift)
+    img = effects.adjust_saturation(img, saturation_factor)
+    img = effects.adjust_contrast(img, contrast_factor)
+    img = effects.adjust_invert(img, invert_factor)
 
     blur_radius = app._effect_int(effect_values, "blur", 0)
     color_bins = app._effect_int(effect_values, "color_reducer", 256)
     legacy_bins = app._effect_int(effect_values, "legacy_collapse", 256)
 
     if blur_radius > 0:
-        img = img.filter(ImageFilter.GaussianBlur(blur_radius))
+        scaled_blur = max(1, int(round(blur_radius * render_scale)))
+        img = img.filter(ImageFilter.GaussianBlur(scaled_blur))
 
     if color_bins < 256:
-        img = image_effects.reduce_colors(img, color_bins)
+        img = effects.reduce_colors(img, color_bins)
 
     if legacy_bins < 256:
-        img = image_effects.reduce_colors_legacy(img, legacy_bins)
+        img = effects.reduce_colors_legacy(img, legacy_bins)
 
     bend_amount = app._effect_float(effect_values, "bending", 0.0)
 
     if bend_amount > 0.0:
-        img = image_effects.apply_data_bending(img, bend_amount, effect_values.get("bend_mode", app.bend_mode_var.get()))
+        img = effects.apply_data_bending(img, bend_amount, effect_values.get("bend_mode", app.bend_mode_var.get()))
 
     datamosh_amount = app._effect_float(effect_values, "datamosh", 0.0)
 
     if datamosh_amount > 0.0:
-        img = image_effects.apply_datamosh(img, datamosh_amount, effect_values.get("datamosh_mode", app.datamosh_mode_var.get()))
+        img = effects.apply_datamosh(img, datamosh_amount, effect_values.get("datamosh_mode", app.datamosh_mode_var.get()))
 
     random_factor = app._effect_float(effect_values, "random_pixels", 0.0)
 
     if random_factor > 0.0:
-        img = image_effects.randomize_pixels(img, random_factor)
+        img = effects.randomize_pixels(img, random_factor)
 
     return img
 
 
-def apply_crt_effects(app, img, effect_values=None):
+def apply_crt_effects(app, img, effect_values=None, render_scale=1.0):
     if img is None:
         return None
 
@@ -167,11 +176,11 @@ def apply_crt_effects(app, img, effect_values=None):
     rgb_shift = int(effect_values.get("rgb_shift", 0))
     vignette_strength = int(effect_values.get("vignette", 0))
 
-    img = image_effects.apply_horizontal_distortion(img, distortion_strength)
-    img = image_effects.apply_screen_curvature(img, curvature_strength)
-    img = image_effects.apply_scanlines(img, scanline_strength)
-    img = image_effects.apply_rgb_shift(img, rgb_shift)
-    img = image_effects.apply_phosphor_glow(img, glow_strength)
-    img = image_effects.apply_static_noise(img, noise_strength)
-    img = image_effects.apply_vignette(img, vignette_strength)
+    img = effects.apply_horizontal_distortion(img, distortion_strength)
+    img = effects.apply_screen_curvature(img, curvature_strength)
+    img = effects.apply_scanlines(img, scanline_strength, render_scale=render_scale)
+    img = effects.apply_rgb_shift(img, rgb_shift, render_scale=render_scale)
+    img = effects.apply_phosphor_glow(img, glow_strength, render_scale=render_scale)
+    img = effects.apply_static_noise(img, noise_strength)
+    img = effects.apply_vignette(img, vignette_strength)
     return img

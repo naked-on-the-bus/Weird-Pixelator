@@ -19,7 +19,7 @@ INFO_PLIST = {
 }
 
 DIST_METADATA = []
-for dist_name in ('imageio', 'imageio-ffmpeg', 'Pillow'):
+for dist_name in ('imageio', 'imageio-ffmpeg', 'Pillow', 'imageconvert'):
     try:
         DIST_METADATA += copy_metadata(dist_name)
     except Exception:

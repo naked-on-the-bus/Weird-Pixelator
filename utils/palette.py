@@ -6,7 +6,7 @@ from tkinter import filedialog, messagebox
 
 from PIL import Image
 
-import image_effects
+from engine import effects
 
 
 def set_palette_text(app, text):
@@ -350,7 +350,7 @@ def extract_palette_from_preview_internal(app, save_to_file=False):
         return
 
     color_count = max(2, min(24, int(float(app.palette_count_slider.get()))))
-    entries = image_effects.extract_palette(preview_image, color_count)
+    entries = effects.extract_palette(preview_image, color_count)
     if not entries:
         reset_palette_output(app, "No colors could be extracted from the current preview.")
         return

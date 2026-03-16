@@ -4,18 +4,22 @@ import colorsys
 import os
 import struct
 from io import BytesIO
-from PIL import Image, ImageTk, ImageOps
+from PIL import Image, ImageFile, ImageTk, ImageOps
 import numpy as np
+
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 import imageio.v2 as imageio
-from image_object import ImageObject
-import image_effects
-import media_io_helpers
-import export_helpers
-import render_pipeline_helpers
-import ui_builders
-import palette_helpers
-import animation_helpers
-import crop_helpers
+from engine.image_object import ImageObject
+from engine import effects as image_effects
+from engine import pipeline as render_pipeline_helpers
+from utils import media_io as media_io_helpers
+from utils import export as export_helpers
+from utils import palette as palette_helpers
+from utils import animation as animation_helpers
+from utils import crop as crop_helpers
+from ui import builders as ui_builders
+from ui import theme as ui_theme
+from imageconvert import ImageConvert
 
 class App:
     def __init__(self, root):
@@ -61,13 +65,24 @@ class App:
         self.manual_blend_enabled = False
         self.manual_blend_editor_window = None
         self.manual_blend_text_widget = None
-        self.manual_blend_status_var = tk.StringVar(value="No manual text data loaded.")
+        self.manual_blend_status_var = tk.StringVar(value="No databend data loaded.")
+        self.convert_format_var = tk.StringVar(value="PNG")
+        self.convert_status_var = tk.StringVar(value="Select a format and convert.")
         self.manual_blend_encoding_var = tk.StringVar(value="Hex")
         self.manual_blend_encoding_trace_id = None
+        self.manual_blend_format_var = tk.StringVar(value="BMP")
+        self.manual_blend_header_sizes = {
+            "JPEG": 512, "PNG": 33, "BMP": 54, "GIF": 13, "WebP": 12,
+        }
+        self.manual_blend_chunk_size = 128
+        self.manual_blend_header_skip = 54
         self.manual_blend_live_editing = False
-        self.manual_blend_direct_reopen_var = tk.BooleanVar(value=False)
         self.manual_blend_source_bytes = b""
         self._manual_blend_pending_job = None
+        self.batch_folder_var = tk.StringVar(value="")
+        self.batch_status_var = tk.StringVar(value="Select a folder to begin batch processing.")
+        self.batch_progress_var = tk.DoubleVar(value=0.0)
+        self._batch_worker = None
         self.palette_entries = []
         self.palette_status_var = tk.StringVar(value="Load an image and extract a palette from the preview.")
         self.palette_format_var = tk.StringVar(value="HEX File")
@@ -95,116 +110,7 @@ class App:
         """
         Return the available app themes.
         """
-        return {
-            "Classic Gray": {
-                "bg": "#c0c0c0",
-                "panel": "#d4d0c8",
-                "panel_alt": "#ece9d8",
-                "panel_soft": "#f3f0e4",
-                "border": "#7f7f7f",
-                "text": "#111111",
-                "muted": "#4e4e4e",
-                "canvas": "#808080",
-                "field": "#ffffff",
-                "field_border": "#7f9db9",
-                "accent": "#0a246a",
-                "accent_soft": "#b6c7e5",
-                "button": "#d4d0c8",
-                "button_alt": "#e6e2d8",
-                "shadow_dark": "#808080",
-                "shadow_light": "#ffffff",
-            },
-            "XP Blue": {
-                "bg": "#dbe7f7",
-                "panel": "#ece9d8",
-                "panel_alt": "#ffffff",
-                "panel_soft": "#f7f4ea",
-                "border": "#7f9db9",
-                "text": "#0f1728",
-                "muted": "#4f6280",
-                "canvas": "#6f8db9",
-                "field": "#ffffff",
-                "field_border": "#7f9db9",
-                "accent": "#1f5fbf",
-                "accent_soft": "#c8daf5",
-                "button": "#d6e3f5",
-                "button_alt": "#eef4fd",
-                "shadow_dark": "#7f9db9",
-                "shadow_light": "#ffffff",
-            },
-            "Olive Retro": {
-                "bg": "#d6d6c2",
-                "panel": "#d9d3be",
-                "panel_alt": "#ece7d5",
-                "panel_soft": "#f5f1e5",
-                "border": "#8a8673",
-                "text": "#232117",
-                "muted": "#5f5a46",
-                "canvas": "#8d9278",
-                "field": "#fffdf6",
-                "field_border": "#9fa27f",
-                "accent": "#4f6b2b",
-                "accent_soft": "#cfd9b6",
-                "button": "#d6d0b8",
-                "button_alt": "#e8e2cb",
-                "shadow_dark": "#8a8673",
-                "shadow_light": "#fffdf6",
-            },
-            "Windows 98 Beige": {
-                "bg": "#c9c1b2",
-                "panel": "#d8d0c4",
-                "panel_alt": "#efe7da",
-                "panel_soft": "#f7f1e7",
-                "border": "#8b8173",
-                "text": "#1d1a16",
-                "muted": "#655c52",
-                "canvas": "#8f877c",
-                "field": "#fffaf2",
-                "field_border": "#9d9283",
-                "accent": "#7a0000",
-                "accent_soft": "#d8beb8",
-                "button": "#d8d0c4",
-                "button_alt": "#e8dfd1",
-                "shadow_dark": "#8b8173",
-                "shadow_light": "#fffaf2",
-            },
-            "Dark Retro": {
-                "bg": "#2e2a26",
-                "panel": "#3a342f",
-                "panel_alt": "#4a433d",
-                "panel_soft": "#544c45",
-                "border": "#161311",
-                "text": "#f2eadf",
-                "muted": "#c2b5a3",
-                "canvas": "#1b1714",
-                "field": "#241f1b",
-                "field_border": "#8a7a67",
-                "accent": "#c86b2a",
-                "accent_soft": "#7b6758",
-                "button": "#4a433d",
-                "button_alt": "#5a5148",
-                "shadow_dark": "#161311",
-                "shadow_light": "#7a6e62",
-            },
-            "Terminal Green": {
-                "bg": "#0b120b",
-                "panel": "#132013",
-                "panel_alt": "#1a2a1a",
-                "panel_soft": "#1f331f",
-                "border": "#2f5a2f",
-                "text": "#8cff8c",
-                "muted": "#5fb35f",
-                "canvas": "#050805",
-                "field": "#091009",
-                "field_border": "#2f5a2f",
-                "accent": "#00ff66",
-                "accent_soft": "#1f4f2c",
-                "button": "#183018",
-                "button_alt": "#204020",
-                "shadow_dark": "#041004",
-                "shadow_light": "#3b6f3b",
-            },
-        }
+        return ui_theme.create_theme_presets()
 
     def _build_ui_shell(self):
         """
@@ -413,570 +319,43 @@ class App:
         """
         Build the main effect controls tab.
         """
-        self.edit_tab.grid_columnconfigure(0, weight=1)
-        self.edit_tab.grid_columnconfigure(1, weight=1)
-
-        self.pixelate_frame, pixelate_body = self._create_card(self.edit_tab, "Pixelate")
-        self.pixelate_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 6), pady=(0, 8))
-        self.jitter_slider = self._create_compact_slider(pixelate_body, "Row Jitter", 0, 100, self.update_effects, initial=0)
-        self.block_slider = self._create_compact_slider(pixelate_body, "Block Shift", 0, 100, self.update_effects, initial=0)
-        self.sort_slider = self._create_compact_slider(pixelate_body, "Pixel Sort", 0, 100, self.update_effects, initial=0)
-        self.pixel_slider = self._create_compact_slider(
-            pixelate_body,
-            "Pixelate",
-            1.0,
-            0.01,
-            self.update_effects,
-            resolution=0.01,
-            initial=1.0,
-            formatter=lambda value: f"{float(value):.2f}"
-        )
-
-        self.colorize_frame, colorize_body = self._create_card(self.edit_tab, "Colorize")
-        self.colorize_frame.grid(row=0, column=1, sticky="nsew", padx=(6, 0), pady=(0, 8))
-        self.hue_slider = self._create_compact_slider(colorize_body, "Hue Shift", -180, 180, self.update_colorize, initial=0)
-        self.saturation_slider = self._create_compact_slider(
-            colorize_body,
-            "Saturation",
-            0.0,
-            2.0,
-            self.update_colorize,
-            resolution=0.1,
-            initial=1.0,
-            formatter=lambda value: f"{float(value):.1f}"
-        )
-        self.contrast_slider = self._create_compact_slider(
-            colorize_body,
-            "Contrast",
-            0.5,
-            2.0,
-            self.update_colorize,
-            resolution=0.1,
-            initial=1.0,
-            formatter=lambda value: f"{float(value):.1f}"
-        )
-        self.invert_button = tk.Checkbutton(
-            colorize_body,
-            text="Invert Colors",
-            variable=self.invert_state,
-            command=self.toggle_invert,
-            bg=self.theme["panel"],
-            fg=self.theme["text"],
-            activebackground=self.theme["panel"],
-            activeforeground=self.theme["text"],
-            selectcolor=self.theme["field"],
-            highlightthickness=0,
-            bd=0,
-            anchor="w"
-        )
-        self.invert_button.pack(fill=tk.X, pady=(4, 0))
-
-        self.randomize_frame, randomize_body = self._create_card(self.edit_tab, "Randomize")
-        self.randomize_frame.grid(row=1, column=0, sticky="nsew", padx=(0, 6), pady=(0, 8))
-        self.randomize_button = tk.Button(
-            randomize_body,
-            text="Randomize Effects",
-            command=self.randomize_effects,
-            **self._button_style(self.theme["button"])
-        )
-        self.randomize_button.pack(fill=tk.X)
-        self.random_pixel_slider = self._create_compact_slider(
-            randomize_body,
-            "Random Pixels",
-            0.0,
-            1.0,
-            self.update_random_pixels,
-            resolution=0.01,
-            initial=0.0,
-            formatter=lambda value: f"{float(value):.2f}"
-        )
-        self.randomize_settings_inline = tk.Button(
-            randomize_body,
-            text="Choose Randomized Controls",
-            command=self.open_randomize_settings,
-            **self._button_style(self.theme["button_alt"])
-        )
-        self.randomize_settings_inline.pack(fill=tk.X, pady=(6, 0))
-
-        self.confuser_frame, confuser_body = self._create_card(self.edit_tab, "Confuser")
-        self.confuser_frame.grid(row=1, column=1, sticky="nsew", padx=(6, 0), pady=(0, 8))
-        self.blur_slider = self._create_compact_slider(confuser_body, "Blur", 0, 10, self.update_confuser, initial=0)
-        self.color_reducer_slider = self._create_compact_slider(confuser_body, "Color Reducer", 2, 256, self.update_confuser, initial=256)
-        self.legacy_color_slider = self._create_compact_slider(confuser_body, "Color Collapse", 2, 256, self.update_confuser, initial=256)
-
-        self.blend_frame, blend_body = self._create_card(self.edit_tab, "Blend")
-        self.blend_frame.grid(row=2, column=0, columnspan=2, sticky="nsew")
-        self.upload_blend_button = tk.Button(
-            blend_body,
-            text="Upload Blend Image",
-            command=self.upload_blend_image,
-            **self._button_style(self.theme["button"])
-        )
-        self.upload_blend_button.pack(fill=tk.X)
-        tk.Label(
-            blend_body,
-            textvariable=self.blend_filename_var,
-            fg=self.theme["muted"],
-            bg=self.theme["panel"],
-            anchor="w"
-        ).pack(fill=tk.X, pady=(6, 2))
-        self.blend_slider = self._create_compact_slider(
-            blend_body,
-            "Blend Factor",
-            0.0,
-            1.0,
-            self.update_blend,
-            resolution=0.01,
-            initial=0.0,
-            formatter=lambda value: f"{float(value):.2f}"
-        )
+        ui_builders.build_adjust_tab(self)
 
     def _build_glitch_tab(self):
         """
         Build databending and datamoshing controls.
         """
-        self.glitch_tab.grid_columnconfigure(0, weight=1)
-        self.glitch_tab.grid_columnconfigure(1, weight=1)
-
-        self.bending_frame, bending_body = self._create_card(self.glitch_tab, "Bending")
-        self.bending_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 6), pady=(0, 8))
-        tk.Label(bending_body, text="Mode", fg=self.theme["text"], bg=self.theme["panel"], anchor="w").pack(fill=tk.X)
-        self.bend_mode_menu = tk.OptionMenu(
-            bending_body,
-            self.bend_mode_var,
-            "Byte Shift",
-            "Byte Swap",
-            "Repeat Burst",
-            command=self.update_bending,
-        )
-        self._style_option_menu(self.bend_mode_menu)
-        self.bend_mode_menu.pack(fill=tk.X, pady=(4, 8))
-        self.bend_slider = self._create_compact_slider(
-            bending_body,
-            "Corruption",
-            0,
-            100,
-            self.update_bending,
-            initial=0,
-        )
-
-        self.datamosh_frame, datamosh_body = self._create_card(self.glitch_tab, "Data Moshing")
-        self.datamosh_frame.grid(row=0, column=1, sticky="nsew", padx=(6, 0), pady=(0, 8))
-        tk.Label(datamosh_body, text="Mode", fg=self.theme["text"], bg=self.theme["panel"], anchor="w").pack(fill=tk.X)
-        self.datamosh_mode_menu = tk.OptionMenu(
-            datamosh_body,
-            self.datamosh_mode_var,
-            "AVI Style",
-            "P-Frame Smear",
-            "Block Echo",
-            "Reverse",
-            command=self.update_datamosh,
-        )
-        self._style_option_menu(self.datamosh_mode_menu)
-        self.datamosh_mode_menu.pack(fill=tk.X, pady=(4, 8))
-        self.datamosh_slider = self._create_compact_slider(
-            datamosh_body,
-            "Intensity",
-            0,
-            100,
-            self.update_datamosh,
-            initial=0,
-        )
-
-        self.manual_blend_frame, manual_blend_body = self._create_card(self.glitch_tab, "Manual Blending")
-        self.manual_blend_frame.grid(row=1, column=0, columnspan=2, sticky="nsew")
-        self.manual_blend_button = tk.Button(
-            manual_blend_body,
-            text="Open Text Editor",
-            command=self.open_manual_blend_editor,
-            **self._button_style(self.theme["button_alt"])
-        )
-        self.manual_blend_button.pack(fill=tk.X)
-        self.manual_blend_clear_button = tk.Button(
-            manual_blend_body,
-            text="Disable Manual Blending",
-            command=self.disable_manual_blending,
-            **self._button_style(self.theme["button"])
-        )
-        self.manual_blend_clear_button.pack(fill=tk.X, pady=(6, 0))
-        tk.Label(
-            manual_blend_body,
-            textvariable=self.manual_blend_status_var,
-            fg=self.theme["muted"],
-            bg=self.theme["panel"],
-            anchor="w",
-            justify=tk.LEFT,
-            wraplength=320,
-        ).pack(fill=tk.X, pady=(8, 0))
+        ui_builders.build_glitch_tab(self)
 
     def _build_finish_tab(self):
         """
         Build the finishing and export controls tab.
         """
-        self.finish_tab.grid_columnconfigure(0, weight=1)
-
-        self.crt_frame, crt_body = self._create_card(self.finish_tab, "CRT Finish")
-        self.crt_frame.grid(row=0, column=0, sticky="nsew", pady=(0, 8))
-
-        crt_grid = tk.Frame(crt_body, bg=self.theme["panel"])
-        crt_grid.pack(fill=tk.X)
-        crt_grid.grid_columnconfigure(0, weight=1)
-        crt_grid.grid_columnconfigure(1, weight=1)
-
-        crt_left = tk.Frame(crt_grid, bg=self.theme["panel"])
-        crt_left.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
-        crt_right = tk.Frame(crt_grid, bg=self.theme["panel"])
-        crt_right.grid(row=0, column=1, sticky="nsew", padx=(6, 0))
-
-        self.curvature_slider = self._create_compact_slider(crt_left, "Curvature", 0, 100, self.update_crt, initial=0)
-        self.glow_slider = self._create_compact_slider(crt_left, "Glow", 0, 100, self.update_crt, initial=0)
-        self.rgb_shift_slider = self._create_compact_slider(crt_left, "RGB Shift", 0, 20, self.update_crt, initial=0)
-        self.vignette_slider = self._create_compact_slider(crt_left, "Vignette", 0, 100, self.update_crt, initial=0)
-
-        self.distortion_slider = self._create_compact_slider(crt_right, "Distortion", 0, 100, self.update_crt, initial=0)
-        self.noise_slider = self._create_compact_slider(crt_right, "Noise", 0, 100, self.update_crt, initial=0)
-        self.scanline_slider = self._create_compact_slider(crt_right, "Scanlines", 0, 100, self.update_crt, initial=0)
-
-        self.export_frame, export_body = self._create_card(self.finish_tab, "Export")
-        self.export_frame.grid(row=1, column=0, sticky="nsew")
-        tk.Label(export_body, text="Save Style", fg=self.theme["text"], bg=self.theme["panel"], anchor="w").pack(fill=tk.X)
-        self.export_compression_menu = tk.OptionMenu(
-            export_body,
-            self.export_compression_var,
-            "No Compression",
-            "Soft CCD",
-            "Compact Camera",
-            "Memory Saver",
-            "Harsh Artifacts",
-            command=self.update_export_compression
-        )
-        self._style_option_menu(self.export_compression_menu)
-        self.export_compression_menu.pack(fill=tk.X, pady=(4, 8))
-
-        tk.Label(export_body, text="Save Folder", fg=self.theme["text"], bg=self.theme["panel"], anchor="w").pack(fill=tk.X)
-        folder_row = tk.Frame(export_body, bg=self.theme["panel"])
-        folder_row.pack(fill=tk.X, pady=(4, 0))
-        self.folder_entry = tk.Entry(folder_row, textvariable=self.folder_path, **self._entry_style())
-        self.folder_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.browse_button = tk.Button(
-            folder_row,
-            text="Browse",
-            command=self.select_folder,
-            **self._button_style(self.theme["button_alt"])
-        )
-        self.browse_button.pack(side=tk.LEFT, padx=(8, 0))
-
-        button_row = tk.Frame(export_body, bg=self.theme["panel"])
-        button_row.pack(fill=tk.X, pady=(10, 0))
-        self.save_png_button = tk.Button(
-            button_row,
-            text="Save As",
-            command=self.save_as,
-            **self._button_style(self.theme["button"])
-        )
-        self.save_png_button.pack(side=tk.LEFT)
-        self.video_preview_button = tk.Button(
-            button_row,
-            text="See Video Preview",
-            command=self.open_video_preview_window,
-            **self._button_style(self.theme["button_alt"])
-        )
-        self.video_preview_button.pack(side=tk.LEFT, padx=(8, 0))
-        tk.Label(
-            export_body,
-            text="Compression affects preview and final export.",
-            fg=self.theme["muted"],
-            bg=self.theme["panel"],
-            anchor="w"
-        ).pack(fill=tk.X, pady=(8, 0))
-        self._update_video_action_buttons()
+        ui_builders.build_finish_tab(self)
 
     def _build_crop_tab(self):
         """
         Build the crop controls tab.
         """
-        self.crop_tab.grid_columnconfigure(0, weight=1)
-        self.crop_frame, crop_body = self._create_card(self.crop_tab, "Crop & Aspect")
-        self.crop_frame.grid(row=0, column=0, sticky="nsew")
-
-        crop_grid = tk.Frame(crop_body, bg=self.theme["panel"])
-        crop_grid.pack(fill=tk.X)
-        crop_grid.grid_columnconfigure(0, weight=1)
-        crop_grid.grid_columnconfigure(1, weight=1)
-
-        self.crop_left_slider, self.crop_left_entry = self._create_crop_control(crop_grid, 0, 0, "left", "Left")
-        self.crop_right_slider, self.crop_right_entry = self._create_crop_control(crop_grid, 0, 1, "right", "Right")
-        self.crop_top_slider, self.crop_top_entry = self._create_crop_control(crop_grid, 1, 0, "top", "Top")
-        self.crop_bottom_slider, self.crop_bottom_entry = self._create_crop_control(crop_grid, 1, 1, "bottom", "Bottom")
-
-        footer = tk.Frame(crop_body, bg=self.theme["panel"])
-        footer.pack(fill=tk.X, pady=(8, 0))
-        footer.grid_columnconfigure(0, weight=1)
-        footer.grid_columnconfigure(1, weight=0)
-
-        self.crop_size_label = tk.Label(
-            footer,
-            textvariable=self.crop_size_var,
-            fg=self.theme["muted"],
-            bg=self.theme["panel"],
-            anchor="w"
-        )
-        self.crop_size_label.grid(row=0, column=0, sticky="w")
-
-        preset_row = tk.Frame(footer, bg=self.theme["panel"])
-        preset_row.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(8, 0))
-        preset_row.grid_columnconfigure(1, weight=1)
-        tk.Label(preset_row, text="Preset", fg=self.theme["text"], bg=self.theme["panel"]).grid(row=0, column=0, sticky="w", padx=(0, 8))
-        self.crop_preset_menu = tk.OptionMenu(
-            preset_row,
-            self.crop_preset_var,
-            "Free",
-            "1:1",
-            "3:2",
-            "4:5",
-            "16:9",
-            "9:16",
-            "21:9",
-            command=self.apply_crop_preset
-        )
-        self._style_option_menu(self.crop_preset_menu)
-        self.crop_preset_menu.grid(row=0, column=1, sticky="ew")
-
-        self.reset_crop_button = tk.Button(
-            crop_body,
-            text="Reset Crop",
-            command=self.reset_crop,
-            **self._button_style(self.theme["button_alt"])
-        )
-        self.reset_crop_button.pack(fill=tk.X, pady=(10, 0))
+        ui_builders.build_crop_tab(self)
 
     def _build_animation_tab(self):
         """
         Build the compact animation tab without scrollbars.
         """
-        self.animate_tab.grid_columnconfigure(0, weight=1)
-        self.animation_frame, animation_body = self._create_card(self.animate_tab, "Animation Frames")
-        self.animation_frame.grid(row=0, column=0, sticky="nsew")
-
-        self.animation_button_row = tk.Frame(animation_body, bg=self.theme["panel"])
-        self.animation_button_row.pack(fill=tk.X)
-        self.add_frame_button = tk.Button(
-            self.animation_button_row,
-            text="Add Frame",
-            command=self.add_animation_frame,
-            **self._button_style(self.theme["button"])
-        )
-        self.add_frame_button.pack(side=tk.LEFT)
-
-        self.delete_frame_button = tk.Button(
-            self.animation_button_row,
-            text="Delete Last",
-            command=self.delete_last_animation_frame,
-            **self._button_style(self.theme["button_alt"])
-        )
-        self.delete_frame_button.pack(side=tk.LEFT, padx=(8, 0))
-
-        self.export_animation_button = tk.Button(
-            self.animation_button_row,
-            text="Export",
-            command=self.open_animation_export_modal,
-            **self._button_style(self.theme["accent_soft"])
-        )
-        self.export_animation_button.pack(side=tk.RIGHT)
-
-        self.animation_status_label = tk.Label(
-            animation_body,
-            textvariable=self.animation_status_var,
-            fg=self.theme["muted"],
-            bg=self.theme["panel"],
-            anchor="w",
-            justify=tk.LEFT
-        )
-        self.animation_status_label.pack(fill=tk.X, pady=(8, 6))
-
-        self.animation_preview_inner = tk.Frame(
-            animation_body,
-            bg=self.theme["panel_soft"],
-            highlightbackground=self.theme["border"],
-            highlightthickness=1,
-            bd=0
-        )
-        self.animation_preview_inner.pack(fill=tk.BOTH, expand=True)
-
-        tk.Label(
-            animation_body,
-            text="The panel shows the latest frames so the layout stays compact.",
-            fg=self.theme["muted"],
-            bg=self.theme["panel"],
-            anchor="w"
-        ).pack(fill=tk.X, pady=(8, 0))
+        ui_builders.build_animation_tab(self)
 
     def _build_intensity_tab(self):
         """
         Build the video intensity modulation tab.
         """
-        self.intensity_tab.grid_columnconfigure(0, weight=1)
-        self.intensity_frame, intensity_body = self._create_card(self.intensity_tab, "Frame Intensity", self.video_status_var)
-        self.intensity_frame.grid(row=0, column=0, sticky="nsew")
-
-        self.intensity_scroll_wrap = tk.Frame(
-            intensity_body,
-            bg=self.theme["panel_soft"],
-            highlightbackground=self.theme["border"],
-            highlightthickness=1,
-            bd=0,
-        )
-        self.intensity_scroll_wrap.pack(fill=tk.BOTH, expand=True)
-
-        self.intensity_canvas = tk.Canvas(
-            self.intensity_scroll_wrap,
-            bg=self.theme["panel_soft"],
-            highlightthickness=0,
-            bd=0,
-            relief=tk.FLAT,
-        )
-        self.intensity_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-
-        self.intensity_scrollbar = tk.Scrollbar(
-            self.intensity_scroll_wrap,
-            orient=tk.VERTICAL,
-            command=self.intensity_canvas.yview,
-        )
-        self.intensity_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.intensity_canvas.configure(yscrollcommand=self.intensity_scrollbar.set)
-
-        self.intensity_inner = tk.Frame(self.intensity_canvas, bg=self.theme["panel_soft"])
-        self.intensity_window_id = self.intensity_canvas.create_window((0, 0), window=self.intensity_inner, anchor="nw")
-
-        self.intensity_inner.bind(
-            "<Configure>",
-            lambda _event: self.intensity_canvas.configure(scrollregion=self.intensity_canvas.bbox("all")),
-        )
-        self.intensity_canvas.bind(
-            "<Configure>",
-            lambda event: self.intensity_canvas.itemconfigure(self.intensity_window_id, width=event.width),
-        )
-
-        tk.Label(
-            intensity_body,
-            text="Each active effect can vary over time for video frames.",
-            fg=self.theme["muted"],
-            bg=self.theme["panel"],
-            anchor="w",
-        ).pack(fill=tk.X, pady=(8, 0))
-
-        self._refresh_video_intensity_controls(force=True)
+        ui_builders.build_intensity_tab(self)
 
     def _build_palette_tab(self):
         """
         Build the palette extraction tab.
         """
-        self.palette_tab.grid_columnconfigure(0, weight=1)
-        self.palette_frame, palette_body = self._create_card(self.palette_tab, "Palette", self.palette_status_var)
-        self.palette_frame.grid(row=0, column=0, sticky="nsew")
-
-        self.palette_count_slider = self._create_compact_slider(
-            palette_body,
-            "Color Count",
-            2,
-            24,
-            self.update_palette_count,
-            initial=8,
-        )
-
-        format_row = tk.Frame(palette_body, bg=self.theme["panel"])
-        format_row.pack(fill=tk.X, pady=(0, 6))
-        tk.Label(format_row, text="Format", fg=self.theme["text"], bg=self.theme["panel"], anchor="w").pack(anchor="w")
-        self.palette_format_menu = tk.OptionMenu(
-            format_row,
-            self.palette_format_var,
-            "PNG Image (1x)",
-            "PNG Image (8x)",
-            "PNG Image (32x)",
-            "PAL File (JASC)",
-            "Photoshop ASE",
-            "Paint.net TXT",
-            "GIMP GPL",
-            "HEX File",
-        )
-        self._style_option_menu(self.palette_format_menu)
-        self.palette_format_menu.pack(fill=tk.X, pady=(4, 0))
-
-        sort_row = tk.Frame(palette_body, bg=self.theme["panel"])
-        sort_row.pack(fill=tk.X, pady=(0, 8))
-        tk.Label(sort_row, text="Sort Colors", fg=self.theme["text"], bg=self.theme["panel"], anchor="w").pack(anchor="w")
-        self.palette_sort_menu = tk.OptionMenu(
-            sort_row,
-            self.palette_sort_var,
-            "Frequency",
-            "Hue",
-            "Brightness",
-            command=self.update_palette_display,
-        )
-        self._style_option_menu(self.palette_sort_menu)
-        self.palette_sort_menu.pack(fill=tk.X, pady=(4, 0))
-
-        self.extract_palette_button = tk.Button(
-            palette_body,
-            text="Extract Palette",
-            command=self.extract_palette_from_preview,
-            **self._button_style(self.theme["accent_soft"])
-        )
-        self.extract_palette_button.pack(fill=tk.X, pady=(0, 6))
-
-        self.save_palette_button = tk.Button(
-            palette_body,
-            text="Save Palette As",
-            command=self.save_palette_as,
-            **self._button_style(self.theme["button_alt"])
-        )
-        self.save_palette_button.pack(fill=tk.X, pady=(0, 10))
-
-        preview_label = tk.Label(
-            palette_body,
-            text="Preview (click a swatch to copy HEX)",
-            fg=self.theme["text"],
-            bg=self.theme["panel"],
-            anchor="w"
-        )
-        preview_label.pack(fill=tk.X)
-
-        self.palette_preview_inner = tk.Frame(
-            palette_body,
-            bg=self.theme["panel_soft"],
-            highlightbackground=self.theme["panel_soft"],
-            highlightthickness=0,
-            bd=0
-        )
-        self.palette_preview_inner.pack(fill=tk.X, pady=(4, 10))
-
-        values_label = tk.Label(
-            palette_body,
-            text="Palette Values",
-            fg=self.theme["text"],
-            bg=self.theme["panel"],
-            anchor="w"
-        )
-        values_label.pack(fill=tk.X)
-
-        self.palette_values_text = tk.Text(
-            palette_body,
-            height=12,
-            wrap=tk.WORD,
-            bg=self.theme["field"],
-            fg=self.theme["text"],
-            insertbackground=self.theme["text"],
-            relief=tk.FLAT,
-            highlightthickness=1,
-            highlightbackground=self.theme["field_border"],
-            highlightcolor=self.theme["accent"],
-            bd=0,
-            padx=10,
-            pady=10,
-        )
-        self.palette_values_text.pack(fill=tk.BOTH, expand=True)
-        self.palette_values_text.configure(state=tk.DISABLED)
-        self._reset_palette_output()
+        ui_builders.build_palette_tab(self)
 
     def _create_card(self, parent, title, subtitle=None, stretch=False):
         """
@@ -1599,7 +978,7 @@ class App:
 
     def _sync_media_tabs(self):
         """
-        Toggle notebook tabs according to current media mode.
+        Toggle notebook tabs according to current media mode and loaded state.
         """
         if not hasattr(self, "controls_notebook"):
             return
@@ -1625,6 +1004,16 @@ class App:
                 pass
             try:
                 self.controls_notebook.tab(self.animate_tab, state="normal")
+            except tk.TclError:
+                pass
+
+        # Batch tab: visible only when an image is loaded (not video)
+        if hasattr(self, "batch_tab"):
+            has_image = self.current_pil_image is not None and not self.is_video_mode
+            try:
+                self.controls_notebook.tab(
+                    self.batch_tab, state="normal" if has_image else "hidden"
+                )
             except tk.TclError:
                 pass
 
@@ -1940,17 +1329,53 @@ class App:
         profile = self.export_compression_var.get() if hasattr(self, 'export_compression_var') else "No Compression"
         return image_effects.apply_export_compression(img, profile)
 
+    def _detect_native_format(self):
+        """
+        Detect the native image format from the loaded source path or converter.
+        Returns a PIL-compatible format string (e.g. 'JPEG', 'PNG', 'BMP').
+        """
+        ext_to_fmt = {
+            ".jpg": "JPEG", ".jpeg": "JPEG", ".png": "PNG",
+            ".bmp": "BMP", ".gif": "GIF", ".webp": "WebP",
+            ".tiff": "TIFF", ".tif": "TIFF", ".heif": "HEIF",
+        }
+        # If image was converted via the Image Converter, honour that format
+        if self.image_source_path is None and self.image_object is not None:
+            name = self.image_object.name or ""
+            ext = os.path.splitext(name)[1].lower()
+            if ext in ext_to_fmt:
+                return ext_to_fmt[ext]
+        # Use source file extension
+        if self.image_source_path:
+            ext = os.path.splitext(self.image_source_path)[1].lower()
+            if ext in ext_to_fmt:
+                return ext_to_fmt[ext]
+        return "BMP"
+
     def _get_manual_blend_seed_bytes(self):
         """
-        Return source bytes used to initialize the manual blending text editor.
+        Return source bytes used to initialize the databend text editor.
+        Auto-detects and uses the native encoding of the currently loaded image.
         """
         max_bytes = 262144
+        fmt = self._detect_native_format()
+        self.manual_blend_format_var.set(fmt)
 
-        def encode_compact_jpeg(source_image):
+        def encode_compact(source_image):
             if source_image is None:
                 return b""
 
-            working = source_image.convert("RGB")
+            if fmt in ("JPEG", "WebP"):
+                working = source_image.convert("RGB")
+            else:
+                working = source_image.convert("RGBA")
+
+            save_kwargs = {"format": fmt}
+            if fmt == "JPEG":
+                save_kwargs["optimize"] = False
+            elif fmt == "WebP":
+                save_kwargs["quality"] = 80
+
             for quality in (90, 84, 78, 70, 62):
                 for scale in (1.0, 0.85, 0.7, 0.55):
                     if scale < 1.0:
@@ -1963,13 +1388,19 @@ class App:
                         candidate = working
 
                     buffer = BytesIO()
-                    candidate.save(buffer, format="JPEG", quality=quality, optimize=False)
+                    kw = dict(save_kwargs)
+                    if fmt in ("JPEG", "WebP"):
+                        kw["quality"] = quality
+                    candidate.save(buffer, **kw)
                     data = buffer.getvalue()
                     if len(data) <= max_bytes:
                         return data
 
             buffer = BytesIO()
-            working.save(buffer, format="JPEG", quality=55, optimize=False)
+            kw = dict(save_kwargs)
+            if fmt in ("JPEG", "WebP"):
+                kw["quality"] = 55
+            working.save(buffer, **kw)
             return buffer.getvalue()
 
         rendered = None
@@ -1985,12 +1416,12 @@ class App:
                 self.manual_blend_live_editing = previous_live
 
         if rendered is not None:
-            data = encode_compact_jpeg(rendered)
+            data = encode_compact(rendered)
             if data:
                 return data
 
         if self.current_pil_image is not None:
-            data = encode_compact_jpeg(self.current_pil_image)
+            data = encode_compact(self.current_pil_image)
             if data:
                 return data
 
@@ -2054,7 +1485,8 @@ class App:
 
     def _decode_image_bytes(self, data):
         """
-        Decode image bytes safely and return an RGBA PIL image, or None.
+        Decode image bytes tolerantly and return an RGBA PIL image, or None.
+        Uses LOAD_TRUNCATED_IMAGES so partially-corrupted files still render.
         """
         if not data:
             return None
@@ -2064,7 +1496,23 @@ class App:
             decoded.load()
             return decoded.convert("RGBA")
         except Exception:
-            return None
+            pass
+
+        # Second attempt: strip trailing garbage and retry
+        try:
+            buf = BytesIO(data)
+            decoded = Image.open(buf)
+            # Force partial load — PIL may still produce pixels
+            try:
+                decoded.load()
+            except Exception:
+                pass
+            if decoded.size[0] > 0 and decoded.size[1] > 0:
+                return decoded.convert("RGBA")
+        except Exception:
+            pass
+
+        return None
 
     def _databend_bytes_with_payload(self, base_bytes, payload_bytes, frame_index=0):
         """
@@ -2093,67 +1541,157 @@ class App:
         output[keep_header:] = body.tobytes()
         return bytes(output)
 
+    @staticmethod
+    def _mutate_bytes(data, operation, chunk_size, header_skip):
+        """
+        Apply a single byte-mutation operation to data, skipping the header.
+        All randomness is un-seeded (different every call).
+        """
+        import random as _rand
+
+        buf = bytearray(data)
+        start = min(header_skip, len(buf))
+        body_len = len(buf) - start
+        if body_len < 1:
+            return bytes(buf)
+        n = min(chunk_size, body_len)
+
+        if operation == "Randomize":
+            pos = _rand.randint(start, start + body_len - n)
+            buf[pos:pos + n] = bytes(_rand.getrandbits(8) for _ in range(n))
+
+        elif operation == "Reverse":
+            pos = _rand.randint(start, start + body_len - n)
+            buf[pos:pos + n] = buf[pos:pos + n][::-1]
+
+        elif operation == "Repeat Fill":
+            pos = _rand.randint(start, start + body_len - n)
+            k = max(1, n // 8)
+            pattern = buf[pos:pos + k]
+            if pattern:
+                filled = (pattern * ((n // len(pattern)) + 1))[:n]
+                buf[pos:pos + n] = filled
+
+        elif operation == "Zero Out":
+            pos = _rand.randint(start, start + body_len - n)
+            buf[pos:pos + n] = b"\x00" * n
+
+        elif operation == "Delete":
+            pos = _rand.randint(start, start + body_len - n)
+            del buf[pos:pos + n]
+
+        elif operation == "Insert Noise":
+            pos = _rand.randint(start, start + body_len)
+            noise = bytes(_rand.getrandbits(8) for _ in range(n))
+            buf[pos:pos] = noise
+
+        elif operation == "Replace":
+            pos = _rand.randint(start, start + body_len - n)
+            buf[pos:pos + n] = bytes(_rand.getrandbits(8) for _ in range(n))
+
+        elif operation == "Move":
+            pos_a = _rand.randint(start, start + body_len - n)
+            chunk = bytes(buf[pos_a:pos_a + n])
+            del buf[pos_a:pos_a + n]
+            new_body_len = len(buf) - start
+            if new_body_len < 1:
+                pos_b = start
+            else:
+                pos_b = _rand.randint(start, start + new_body_len)
+            buf[pos_b:pos_b] = chunk
+
+        return bytes(buf)
+
+    def _interpret_raw_pixels(self, data, reference_img):
+        """
+        Interpret raw byte data as pixel values mapped onto the reference image
+        dimensions. This always produces a visible result regardless of how
+        corrupted the data is — the glitch-tool "last resort" approach.
+        """
+        h, w = reference_img.size[1], reference_img.size[0]
+        pixels_needed = h * w * 3
+        raw = np.frombuffer(data, dtype=np.uint8)
+        if raw.size == 0:
+            return None
+        # Tile/truncate to fill the pixel grid
+        if raw.size < pixels_needed:
+            raw = np.resize(raw, pixels_needed)
+        else:
+            raw = raw[:pixels_needed]
+        rgb = raw.reshape((h, w, 3))
+        return Image.fromarray(rgb, mode="RGB").convert("RGBA")
+
     def _apply_manual_blending(self, img, frame_index=0):
         """
-        Apply text-driven byte blending to image pixels for glitch results.
+        Apply databend effect by decoding the edited bytes directly as an image.
+        Falls back to raw-pixel interpretation so the user always sees a result.
         """
         if img is None or not self.manual_blend_enabled:
             return img
 
+        if not self.manual_blend_bytes:
+            if self.manual_blend_live_editing:
+                self.manual_blend_status_var.set("Empty — load bytes to start databending")
+            return img
+
+        fmt = self.manual_blend_format_var.get() if hasattr(self, "manual_blend_format_var") else "BMP"
+        nbytes = len(self.manual_blend_bytes)
         arr = np.array(img.convert("RGBA"), copy=True)
-        if arr.ndim != 3 or arr.shape[2] < 3:
-            return img
 
-        payload = np.frombuffer(self.manual_blend_bytes, dtype=np.uint8)
-        if payload.size == 0:
-            if self.manual_blend_live_editing:
-                arr[..., :3] = 0
-                return Image.fromarray(arr, mode="RGBA").convert(img.mode)
-            return img
-
-        direct_decode = self._decode_image_bytes(self.manual_blend_bytes)
-        strict_reopen = bool(self.manual_blend_direct_reopen_var.get()) if hasattr(self, "manual_blend_direct_reopen_var") else False
-
-        if direct_decode is not None:
-            if direct_decode.size != img.size:
-                direct_decode = direct_decode.resize(img.size, Image.LANCZOS)
-            if arr.shape[2] >= 4:
+        result = self._decode_image_bytes(self.manual_blend_bytes)
+        if result is not None:
+            if result.size != img.size:
+                result = result.resize(img.size, Image.LANCZOS)
+            if arr.ndim == 3 and arr.shape[2] >= 4:
                 alpha = Image.fromarray(arr[..., 3], mode="L")
-                direct_decode.putalpha(alpha)
-            return direct_decode.convert(img.mode)
+                result.putalpha(alpha)
+            self.manual_blend_status_var.set(
+                f"Active — {fmt} decoded OK • {nbytes} bytes"
+            )
+            return result.convert(img.mode)
 
-        if strict_reopen:
-            if self.manual_blend_live_editing:
-                arr[..., :3] = np.roll(arr[..., :3], shift=3 + (frame_index % 9), axis=0)
-                return Image.fromarray(arr, mode="RGBA").convert(img.mode)
+        # Format-level decode failed — show the corrupted bytes as raw pixels
+        raw_result = self._interpret_raw_pixels(self.manual_blend_bytes, img)
+        if raw_result is not None:
+            if raw_result.size != img.size:
+                raw_result = raw_result.resize(img.size, Image.LANCZOS)
+            if arr.ndim == 3 and arr.shape[2] >= 4:
+                alpha = Image.fromarray(arr[..., 3], mode="L")
+                raw_result.putalpha(alpha)
+            self.manual_blend_status_var.set(
+                f"Active — raw pixel fallback • {fmt} header broken • {nbytes} bytes"
+            )
+            return raw_result.convert(img.mode)
+
+        self.manual_blend_status_var.set(
+            f"Decode failed — bytes are not valid {fmt} • {nbytes} bytes"
+        )
+        return img
+
+    def _apply_xor_databend(self, img, payload_bytes, frame_index=0):
+        """
+        XOR-based byte databending for automated/non-editing effects.
+        Encodes img as JPEG, XORs with payload, and attempts to decode.
+        Returns the original image if decode fails.
+        """
+        if img is None or not payload_bytes:
             return img
 
         base_buffer = BytesIO()
         img.convert("RGB").save(base_buffer, format="JPEG", quality=84, optimize=False)
         base_bytes = base_buffer.getvalue()
-        databent_bytes = self._databend_bytes_with_payload(base_bytes, self.manual_blend_bytes, frame_index=frame_index)
+        databent_bytes = self._databend_bytes_with_payload(base_bytes, payload_bytes, frame_index=frame_index)
         decoded = self._decode_image_bytes(databent_bytes)
 
-        if decoded is None and self.manual_blend_source_bytes:
-            from_source = self._databend_bytes_with_payload(
-                self.manual_blend_source_bytes,
-                self.manual_blend_bytes,
-                frame_index=frame_index,
-            )
-            decoded = self._decode_image_bytes(from_source)
-
-        if decoded is None:
-            if self.manual_blend_live_editing:
-                arr[..., :3] = np.roll(arr[..., :3], shift=1 + (frame_index % 7), axis=1)
-                return Image.fromarray(arr, mode="RGBA").convert(img.mode)
-            return img
-
-        if decoded.size != img.size:
-            decoded = decoded.resize(img.size, Image.LANCZOS)
-        if arr.shape[2] >= 4:
-            alpha = Image.fromarray(arr[..., 3], mode="L")
-            decoded.putalpha(alpha)
-        return decoded.convert(img.mode)
+        if decoded is not None:
+            arr = np.array(img.convert("RGBA"), copy=True)
+            if decoded.size != img.size:
+                decoded = decoded.resize(img.size, Image.LANCZOS)
+            if arr.ndim == 3 and arr.shape[2] >= 4:
+                alpha = Image.fromarray(arr[..., 3], mode="L")
+                decoded.putalpha(alpha)
+            return decoded.convert(img.mode)
+        return img
 
     def disable_manual_blending(self):
         """
@@ -2163,7 +1701,7 @@ class App:
         self.manual_blend_live_editing = False
         self.manual_blend_bytes = b""
         self.manual_blend_source_bytes = b""
-        self.manual_blend_status_var.set("Manual blending disabled.")
+        self.manual_blend_status_var.set("Databend disabled.")
         self.request_preview_update(immediate=True)
 
     def apply_manual_blending(self):
@@ -2176,7 +1714,7 @@ class App:
 
         final_image = self.render_current_image(for_preview=False)
         if final_image is None:
-            messagebox.showerror("Error", "Unable to apply manual blending.")
+            messagebox.showerror("Error", "Unable to apply databend.")
             return
 
         baked = final_image.convert("RGBA")
@@ -2192,33 +1730,109 @@ class App:
         self.manual_blend_live_editing = False
         self.manual_blend_bytes = b""
         self.manual_blend_source_bytes = b""
-        self.manual_blend_status_var.set("Manual blending applied to source.")
+        self.manual_blend_status_var.set("Databend applied to source.")
         self.pipeline_image = baked.copy()
         self.display_image(baked)
 
+    def convert_image_format(self):
+        """
+        Convert the current image state to the selected format using imageconvert,
+        then reload the converted image as the new working source.
+        """
+        if self.current_pil_image is None:
+            messagebox.showerror("Error", "No image loaded to convert.")
+            return
+
+        target_format = self.convert_format_var.get()
+        format_ext_map = {
+            "PNG": ".png", "JPEG": ".jpg", "BMP": ".bmp",
+            "TIFF": ".tiff", "WebP": ".webp", "HEIF": ".heif",
+        }
+        ext = format_ext_map.get(target_format, ".png")
+
+        self.convert_status_var.set(f"Converting to {target_format}...")
+        self.root.update_idletasks()
+
+        import tempfile
+        try:
+            final_image = self.render_current_image(for_preview=False)
+            if final_image is None:
+                messagebox.showerror("Error", "Unable to render current image for conversion.")
+                self.convert_status_var.set("Conversion failed.")
+                return
+
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as src_file:
+                src_path = src_file.name
+            final_image.convert("RGBA").save(src_path, format="PNG")
+
+            dst_path = src_path.replace(".png", ext)
+            if dst_path == src_path:
+                dst_path = src_path + ext
+
+            converter = ImageConvert()
+            converter.convert(src_path, dst_path, quality=95)
+
+            converted_image = Image.open(dst_path).convert("RGBA")
+            converted_image.load()
+
+            self.current_pil_image = converted_image
+            self.image_source_path = None
+            old_name = self.image_object.name if self.image_object else "Converted"
+            base_name = os.path.splitext(old_name)[0]
+            self.image_object = ImageObject(
+                name=f"{base_name}{ext}",
+                size=converted_image.size,
+                pixel_array=np.array(converted_image),
+            )
+            self.pipeline_image = converted_image.copy()
+            self.display_image(converted_image)
+            self.convert_status_var.set(f"Converted to {target_format} successfully.")
+
+        except Exception as exc:
+            messagebox.showerror("Error", f"Conversion failed:\n{exc}")
+            self.convert_status_var.set("Conversion failed.")
+        finally:
+            for p in (src_path, dst_path):
+                try:
+                    os.remove(p)
+                except OSError:
+                    pass
+
     def _apply_manual_blend_editor_changes(self):
         """
-        Parse editor text and apply manual blending payload.
+        Parse editor text and apply databend payload.
         """
         self._manual_blend_pending_job = None
         if self.manual_blend_text_widget is None:
             return
 
         mode = self.manual_blend_encoding_var.get() if hasattr(self, "manual_blend_encoding_var") else "Hex"
+        fmt = self.manual_blend_format_var.get() if hasattr(self, "manual_blend_format_var") else "BMP"
         raw_text = self.manual_blend_text_widget.get("1.0", "end-1c")
         try:
             parsed = self._parse_manual_blend_text(raw_text, mode=mode)
         except Exception as exc:
-            self.manual_blend_status_var.set(f"Manual blending parse error ({mode}): {exc}")
+            self.manual_blend_status_var.set(f"Databend parse error ({mode}): {exc}")
             return
-
-        if len(parsed) > 32768:
-            parsed = parsed[:32768]
 
         self.manual_blend_bytes = parsed
         self.manual_blend_enabled = True
         self.manual_blend_live_editing = True
-        self.manual_blend_status_var.set(f"Manual blending active ({mode}) • {len(parsed)} edited bytes")
+
+        nbytes = len(parsed)
+        if nbytes == 0:
+            self.manual_blend_status_var.set("Empty — load bytes to start databending")
+        else:
+            result = self._decode_image_bytes(parsed)
+            if result is not None:
+                self.manual_blend_status_var.set(
+                    f"Active — {fmt} decoded OK • {nbytes} bytes"
+                )
+            else:
+                self.manual_blend_status_var.set(
+                    f"Active — raw pixel fallback • {fmt} header broken • {nbytes} bytes"
+                )
+
         self.request_preview_update()
 
     def _schedule_manual_blend_text_parse(self, _event=None):
@@ -2235,7 +1849,7 @@ class App:
         """
         seed_bytes = self._get_manual_blend_seed_bytes()
         if not seed_bytes:
-            messagebox.showerror("Error", "Load an image or video before opening manual blending.")
+            messagebox.showerror("Error", "Load an image or video before opening the databend editor.")
             return
 
         self.manual_blend_source_bytes = seed_bytes
@@ -2245,9 +1859,9 @@ class App:
             return
 
         win = tk.Toplevel(self.root)
-        win.title("Manual Blending Editor")
+        win.title("Databend Editor")
         win.configure(bg=self.theme["panel"])
-        win.geometry("860x620")
+        win.geometry("960x740")
         self.manual_blend_editor_window = win
 
         tk.Label(
@@ -2278,18 +1892,146 @@ class App:
         self._style_option_menu(encoding_menu)
         encoding_menu.pack(side=tk.LEFT, padx=(8, 0))
 
-        strict_toggle = tk.Checkbutton(
+        # Display detected native format (read-only)
+        tk.Label(
             mode_row,
-            text="Direct Reopen Only",
-            variable=self.manual_blend_direct_reopen_var,
-            bg=self.theme["panel"],
+            text="Format",
             fg=self.theme["text"],
-            activebackground=self.theme["panel"],
-            activeforeground=self.theme["text"],
-            selectcolor=self.theme["field"],
-            command=self.request_preview_update,
+            bg=self.theme["panel"],
+            anchor="w",
+        ).pack(side=tk.LEFT, padx=(16, 0))
+        tk.Label(
+            mode_row,
+            textvariable=self.manual_blend_format_var,
+            fg=self.theme["muted"],
+            bg=self.theme["panel"],
+            anchor="w",
+        ).pack(side=tk.LEFT, padx=(8, 0))
+
+        # Update header skip based on detected format
+        self.manual_blend_header_skip = self.manual_blend_header_sizes.get(
+            self.manual_blend_format_var.get(), 512
         )
-        strict_toggle.pack(side=tk.LEFT, padx=(12, 0))
+
+        # Controls row — chunk size and header skip
+        controls_row = tk.Frame(win, bg=self.theme["panel"])
+        controls_row.pack(fill=tk.X, padx=12, pady=(0, 6))
+
+        tk.Label(
+            controls_row, text="Chunk Size",
+            fg=self.theme["text"], bg=self.theme["panel"],
+        ).pack(side=tk.LEFT)
+        self._chunk_size_var = tk.StringVar(value=str(self.manual_blend_chunk_size))
+        chunk_entry = tk.Entry(
+            controls_row, textvariable=self._chunk_size_var, width=6,
+            bg=self.theme["field"], fg=self.theme["text"],
+            insertbackground=self.theme["text"], relief=tk.SUNKEN, bd=2,
+        )
+        chunk_entry.pack(side=tk.LEFT, padx=(4, 0))
+
+        def on_chunk_size_change(*_):
+            try:
+                val = int(self._chunk_size_var.get())
+                self.manual_blend_chunk_size = max(8, min(4096, val))
+            except ValueError:
+                pass
+        self._chunk_size_var.trace_add("write", on_chunk_size_change)
+
+        tk.Label(
+            controls_row, text="Header Skip",
+            fg=self.theme["text"], bg=self.theme["panel"],
+        ).pack(side=tk.LEFT, padx=(16, 0))
+        self._header_skip_var = tk.StringVar(value=str(self.manual_blend_header_skip))
+        header_entry = tk.Entry(
+            controls_row, textvariable=self._header_skip_var, width=6,
+            bg=self.theme["field"], fg=self.theme["text"],
+            insertbackground=self.theme["text"], relief=tk.SUNKEN, bd=2,
+        )
+        header_entry.pack(side=tk.LEFT, padx=(4, 0))
+
+        def on_header_skip_change(*_):
+            try:
+                val = int(self._header_skip_var.get())
+                self.manual_blend_header_skip = max(0, val)
+            except ValueError:
+                pass
+        self._header_skip_var.trace_add("write", on_header_skip_change)
+
+        tk.Label(
+            controls_row, text="Iterations",
+            fg=self.theme["text"], bg=self.theme["panel"],
+        ).pack(side=tk.LEFT, padx=(16, 0))
+        self._iterations_var = tk.StringVar(value="5")
+        iterations_spin = tk.Spinbox(
+            controls_row, from_=1, to=50, textvariable=self._iterations_var, width=4,
+            bg=self.theme["field"], fg=self.theme["text"],
+            insertbackground=self.theme["text"], relief=tk.SUNKEN, bd=2,
+            buttonbackground=self.theme["panel"],
+        )
+        iterations_spin.pack(side=tk.LEFT, padx=(4, 0))
+        # Operation buttons row — byte mutation tools
+        ops_row = tk.Frame(win, bg=self.theme["panel"])
+        ops_row.pack(fill=tk.X, padx=12, pady=(0, 6))
+
+        self._selected_operation = tk.StringVar(value="Randomize")
+        operations = [
+            "Randomize", "Reverse", "Repeat Fill", "Zero Out",
+            "Delete", "Insert Noise", "Replace", "Move",
+        ]
+
+        def apply_operation(op=None):
+            if self.manual_blend_text_widget is None:
+                return
+            if op is None:
+                op = self._selected_operation.get()
+            self._selected_operation.set(op)
+            mode = self.manual_blend_encoding_var.get()
+            raw_text = self.manual_blend_text_widget.get("1.0", "end-1c")
+            try:
+                current_bytes = self._parse_manual_blend_text(raw_text, mode=mode)
+            except Exception:
+                return
+            mutated = self._mutate_bytes(
+                current_bytes, op, self.manual_blend_chunk_size, self.manual_blend_header_skip
+            )
+            self.manual_blend_text_widget.delete("1.0", tk.END)
+            self.manual_blend_text_widget.insert("1.0", self._format_manual_blend_bytes(mutated, mode=mode))
+            self._schedule_manual_blend_text_parse()
+
+        for op_name in operations:
+            tk.Button(
+                ops_row, text=op_name,
+                command=lambda o=op_name: apply_operation(o),
+                **self._button_style(self.theme["button"]),
+            ).pack(side=tk.LEFT, padx=(0, 4))
+
+        def glitch_n_times():
+            if self.manual_blend_text_widget is None:
+                return
+            try:
+                n = max(1, min(50, int(self._iterations_var.get())))
+            except ValueError:
+                n = 5
+            op = self._selected_operation.get()
+            mode = self.manual_blend_encoding_var.get()
+            raw_text = self.manual_blend_text_widget.get("1.0", "end-1c")
+            try:
+                current_bytes = self._parse_manual_blend_text(raw_text, mode=mode)
+            except Exception:
+                return
+            for _ in range(n):
+                current_bytes = self._mutate_bytes(
+                    current_bytes, op, self.manual_blend_chunk_size, self.manual_blend_header_skip
+                )
+            self.manual_blend_text_widget.delete("1.0", tk.END)
+            self.manual_blend_text_widget.insert("1.0", self._format_manual_blend_bytes(current_bytes, mode=mode))
+            self._schedule_manual_blend_text_parse()
+
+        tk.Button(
+            ops_row, text="Glitch!",
+            command=glitch_n_times,
+            **self._button_style(self.theme["accent_soft"]),
+        ).pack(side=tk.LEFT, padx=(8, 0))
 
         editor_wrap = tk.Frame(win, bg=self.theme["panel"])
         editor_wrap.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 8))
@@ -2333,7 +2075,6 @@ class App:
         def on_encoding_change(*_args):
             if self.manual_blend_text_widget is None:
                 return
-
             current_text = self.manual_blend_text_widget.get("1.0", "end-1c")
             previous_mode = last_mode[0]
             current_mode = self.manual_blend_encoding_var.get()
@@ -2341,7 +2082,6 @@ class App:
                 current_bytes = self._parse_manual_blend_text(current_text, mode=previous_mode)
             except Exception:
                 current_bytes = self.manual_blend_bytes if self.manual_blend_bytes else self._get_manual_blend_seed_bytes()
-
             self.manual_blend_text_widget.delete("1.0", tk.END)
             self.manual_blend_text_widget.insert("1.0", self._format_manual_blend_bytes(current_bytes, mode=current_mode))
             last_mode[0] = current_mode
@@ -2716,6 +2456,72 @@ class App:
             if writer is not None:
                 writer.close()
 
+    def open_fullsize_preview(self):
+        """
+        Render the current image at full resolution and display it in a new window.
+        The window fits the image to the screen, with scrollbars for larger images.
+        """
+        if self.image_object is None or self.current_pil_image is None:
+            messagebox.showerror("Error", "No image loaded.")
+            return
+
+        full_img = self.render_current_image(for_preview=False)
+        if full_img is None:
+            messagebox.showerror("Error", "Unable to render full-size preview.")
+            return
+
+        win = tk.Toplevel(self.root)
+        win.title(f"Full Size Preview — {full_img.size[0]} × {full_img.size[1]} px")
+        win.configure(bg=self.theme["bg"])
+
+        screen_w = win.winfo_screenwidth()
+        screen_h = win.winfo_screenheight()
+        max_w = max(200, int(screen_w * 0.88))
+        max_h = max(200, int(screen_h * 0.88))
+
+        img_w, img_h = full_img.size
+        scale = min(max_w / img_w, max_h / img_h, 1.0)
+        disp_w = max(1, int(img_w * scale))
+        disp_h = max(1, int(img_h * scale))
+
+        display_img = full_img.resize((disp_w, disp_h), Image.LANCZOS) if scale < 1.0 else full_img
+
+        tk_img = ImageTk.PhotoImage(display_img)
+
+        frame = tk.Frame(win, bg=self.theme["bg"])
+        frame.pack(fill=tk.BOTH, expand=True, padx=12, pady=12)
+
+        canvas = tk.Canvas(frame, bg="#000000", bd=0, highlightthickness=0,
+                           width=disp_w, height=disp_h)
+        scroll_x = tk.Scrollbar(frame, orient=tk.HORIZONTAL, command=canvas.xview)
+        scroll_y = tk.Scrollbar(frame, orient=tk.VERTICAL, command=canvas.yview)
+        canvas.configure(xscrollcommand=scroll_x.set, yscrollcommand=scroll_y.set,
+                         scrollregion=(0, 0, disp_w, disp_h))
+
+        scroll_x.pack(side=tk.BOTTOM, fill=tk.X)
+        scroll_y.pack(side=tk.RIGHT, fill=tk.Y)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        canvas.create_image(0, 0, anchor=tk.NW, image=tk_img)
+        canvas._tk_img_ref = tk_img  # keep reference alive
+
+        size_label = tk.Label(
+            win,
+            text=f"Full resolution: {img_w} × {img_h} px"
+            + (f"  (displayed at {disp_w} × {disp_h} px)" if scale < 1.0 else ""),
+            fg=self.theme["muted"],
+            bg=self.theme["bg"],
+            font=("Helvetica", 10),
+        )
+        size_label.pack(pady=(0, 8))
+
+        win.update_idletasks()
+        win_w = min(disp_w + 32, max_w)
+        win_h = min(disp_h + 80, max_h)
+        x = max(0, (screen_w - win_w) // 2)
+        y = max(0, (screen_h - win_h) // 2)
+        win.geometry(f"{win_w}x{win_h}+{x}+{y}")
+
     def display_image(self, img):
         if img is None:
             self.tk_img = None
@@ -2954,6 +2760,145 @@ class App:
             return
 
         self.save_image()
+
+    # ------------------------------------------------------------------
+    # Batch Processing
+    # ------------------------------------------------------------------
+
+    SUPPORTED_BATCH_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif", ".gif", ".webp"}
+
+    def batch_browse_folder(self):
+        """
+        Open a directory picker and populate the batch folder path.
+        """
+        folder = filedialog.askdirectory(title="Select Source Folder")
+        if folder:
+            self.batch_folder_var.set(folder)
+            self.batch_status_var.set("Folder selected. Press 'Run Batch' to start.")
+            self.batch_progress_var.set(0.0)
+
+    def run_batch_processing(self):
+        """
+        Start batch processing in a background thread.
+        """
+        import threading
+
+        if self.current_pil_image is None:
+            messagebox.showerror("Error", "Load an image first so current glitch settings are applied.")
+            return
+
+        folder = self.batch_folder_var.get()
+        if not folder or not os.path.isdir(folder):
+            messagebox.showerror("Error", "Select a valid source folder first.")
+            return
+
+        # Prevent duplicate runs
+        if self._batch_worker is not None and self._batch_worker.is_alive():
+            messagebox.showinfo("Batch", "A batch job is already running.")
+            return
+
+        self.batch_run_button.configure(state=tk.DISABLED)
+        self.batch_status_var.set("Scanning folder…")
+        self.batch_progress_var.set(0.0)
+
+        self._batch_worker = threading.Thread(
+            target=self._batch_worker_run,
+            args=(folder,),
+            daemon=True,
+        )
+        self._batch_worker.start()
+
+    def _batch_worker_run(self, folder):
+        """
+        Background worker: scan, process and save. Progress is pushed to the
+        UI thread via root.after().
+        """
+        def ui(fn):
+            self.root.after(0, fn)
+
+        try:
+            image_files = [
+                os.path.join(folder, f)
+                for f in os.listdir(folder)
+                if os.path.splitext(f)[1].lower() in self.SUPPORTED_BATCH_EXTENSIONS
+            ]
+
+            if not image_files:
+                ui(lambda: self.batch_status_var.set("No supported images found in folder."))
+                ui(lambda: self.batch_run_button.configure(state=tk.NORMAL))
+                return
+
+            output_dir = os.path.join(folder, "glitched_outputs")
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+
+            total = len(image_files)
+            ui(lambda: self.batch_status_var.set(f"Found {total} image(s). Processing…"))
+
+            effect_values = self._collect_effect_values()
+
+            for index, src_path in enumerate(image_files):
+                try:
+                    src_img = Image.open(src_path).convert("RGBA")
+
+                    # Temporarily swap current_pil_image so the pipeline operates on it
+                    previous_pil = self.current_pil_image
+                    previous_src = self.image_source_path
+                    self.current_pil_image = src_img
+                    self.image_source_path = src_path
+
+                    try:
+                        result = render_pipeline_helpers.render_frame_with_values(
+                            self, src_img, effect_values, for_preview=False
+                        )
+                    finally:
+                        self.current_pil_image = previous_pil
+                        self.image_source_path = previous_src
+
+                    if result is None:
+                        result = src_img
+
+                    # Keep original format
+                    ext = os.path.splitext(src_path)[1].lower()
+                    out_name = os.path.splitext(os.path.basename(src_path))[0] + "_glitched" + ext
+                    out_path = os.path.join(output_dir, out_name)
+
+                    pil_format_map = {
+                        ".jpg": "JPEG", ".jpeg": "JPEG", ".png": "PNG",
+                        ".bmp": "BMP", ".tiff": "TIFF", ".tif": "TIFF",
+                        ".gif": "GIF", ".webp": "WebP",
+                    }
+                    save_fmt = pil_format_map.get(ext, "PNG")
+                    if save_fmt in ("JPEG",):
+                        result = result.convert("RGB")
+                    elif save_fmt == "GIF":
+                        result = result.convert("P", palette=Image.ADAPTIVE)
+                    elif save_fmt in ("BMP", "TIFF"):
+                        result = result.convert("RGB")
+
+                    result.save(out_path, format=save_fmt)
+
+                except Exception as exc:
+                    print(f"Batch: skipping {src_path}: {exc}")
+
+                progress = ((index + 1) / total) * 100
+                i_snapshot = index + 1
+                ui(lambda p=progress, i=i_snapshot: (
+                    self.batch_progress_var.set(p),
+                    self.batch_status_var.set(f"Processing {i}/{total}…"),
+                ))
+
+            ui(lambda: self.batch_status_var.set(
+                f"Done — {total} image(s) saved to glitched_outputs/"
+            ))
+            ui(lambda: self.batch_progress_var.set(100.0))
+
+        except Exception as exc:
+            msg = str(exc)
+            ui(lambda: self.batch_status_var.set(f"Batch error: {msg}"))
+        finally:
+            ui(lambda: getattr(self, "batch_run_button", None) and self.batch_run_button.configure(state=tk.NORMAL))
+
 
 if __name__ == "__main__":
     root = tk.Tk()

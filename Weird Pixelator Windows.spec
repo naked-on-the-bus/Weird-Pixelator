@@ -7,7 +7,7 @@ from PyInstaller.utils.hooks import copy_metadata
 APP_NAME = 'Weird Pixelator'
 APP_VERSION = '1.0.0'
 ICON_PATH = str(Path(SPECPATH) / 'assets' / 'icon.ico')
-METADATA_DATAS = copy_metadata('imageio') + copy_metadata('imageio-ffmpeg') + copy_metadata('Pillow')
+METADATA_DATAS = copy_metadata('imageio') + copy_metadata('imageio-ffmpeg') + copy_metadata('Pillow') + copy_metadata('imageconvert')
 
 
 a = Analysis(

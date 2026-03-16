@@ -4,7 +4,12 @@ from PyInstaller.utils.hooks import copy_metadata
 
 
 APP_NAME = 'Weird Pixelator'
-METADATA_DATAS = copy_metadata('imageio') + copy_metadata('imageio-ffmpeg') + copy_metadata('Pillow') + copy_metadata('imageconvert')
+METADATA_DATAS = []
+for dist_name in ('imageio', 'imageio-ffmpeg', 'Pillow', 'imageconvert'):
+    try:
+        METADATA_DATAS += copy_metadata(dist_name)
+    except Exception:
+        pass
 
 
 a = Analysis(

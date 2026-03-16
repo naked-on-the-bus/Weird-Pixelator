@@ -54,7 +54,7 @@ jobs:
         run: ./scripts/build_macos.sh
 
       - name: Zip macOS app
-        run: cd dist && zip -r "Weird Pixelator macOS.zip" "Weird Pixelator.app"
+        run: cd dist && ditto -c -k --sequesterRsrc --keepParent "Weird Pixelator.app" "Weird Pixelator macOS.zip"
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
@@ -89,6 +89,7 @@ jobs:
         with:
           name: weird-pixelator-linux
           path: "dist/Weird Pixelator Linux.tar.gz"
+          if-no-files-found: error
 
   release:
     needs: [build-windows, build-macos, build-linux]

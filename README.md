@@ -1,5 +1,8 @@
 # Weird Pixelator
 
+NOTE!!
+For some reason the mac build doen't work with github action, download the mac version frommthe itch.io page : https://naked-on-the-bus.itch.io/weird-pixellator
+
 Weird Pixelator is a desktop glitch-art editor built with Tkinter.
 It supports live preview controls for pixel effects, color work, blend overlays,
 crop tools, and animation export workflows.
